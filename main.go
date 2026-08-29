@@ -20,6 +20,13 @@ func main() {
 	if err := config.Load(); err != nil {
 		log.Fatal(err)
 	}
+	// novel-workflow v2：ffmpeg 启动 smoke check。
+	// ffmpeg 缺失只 warn（不阻塞），dev 机器可继续开发；合成 worker 在需要时才报错。
+	if out, err := service.CheckFfmpegAvailable(config.Cfg.FfmpegBinaryPath); err != nil {
+		log.Printf("[WARN] ffmpeg 不可用 (%v)：成片合成功能将不可用。Docker 镜像已预装 ffmpeg，本地 dev 请安装并设置 FFMPEG_BINARY_PATH", err)
+	} else {
+		log.Printf("[INFO] ffmpeg 可用: %s", out)
+	}
 	// 启动期触发 DB 连接 + AutoMigrate，避免首次请求才暴露 DB 故障。
 	if _, err := repository.DB(); err != nil {
 		log.Fatal("数据库初始化失败: ", err)
@@ -36,6 +43,9 @@ func main() {
 	if err := service.SeedDefaultUserGroups(); err != nil {
 		log.Printf("seed default user groups failed: %v", err)
 	}
+	// Sprint 4：通用 task 后台 worker（5s 轮询 pending/running task）
+	// Sprint 4 暂不注册任何 handler；worker 启动后空闲不报错
+	service.StartTaskWorker()
 	service.StartCanvasProjectCleanupScheduler()
 	service.StartBalanceHoldSweepScheduler()
 	service.StartModelStatusScheduler()
