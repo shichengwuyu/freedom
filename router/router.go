@@ -63,6 +63,14 @@ func New() *gin.Engine {
 	v1.GET("/user-tokens", gin.WrapF(handler.ListUserTokensHandler))
 	// Sprint 4：通用 task 查询（仅 Sprint 4 之后新增能力的 task；旧 4 套表各自有接口）
 	v1.GET("/tasks", gin.WrapF(handler.UserTasks))
+	// novel-workflow v2：工作流编排层 HTTP API
+	v1.POST("/novel/workflows", gin.WrapF(handler.CreateNovelWorkflowRun))
+	v1.GET("/novel/workflows", gin.WrapF(handler.ListNovelWorkflowRuns))
+	v1.GET("/novel/workflows/:id", gin.WrapF(handler.GetNovelWorkflowRun))
+	v1.POST("/novel/workflows/:id/start", gin.WrapF(handler.StartNovelWorkflowRun))
+	v1.POST("/novel/workflows/:id/nodes/:nodeId/start", gin.WrapF(handler.StartNovelWorkflowNode))
+	v1.POST("/novel/workflows/:id/nodes/:nodeId/cancel", gin.WrapF(handler.CancelNovelWorkflowNode))
+	v1.POST("/novel/workflows/:id/nodes/:nodeId/retry", gin.WrapF(handler.RetryNovelWorkflowNode))
 	v1.DELETE("/user-tokens/:id", func(c *gin.Context) {
 		handler.DeleteUserTokenHandler(c.Writer, c.Request)
 	})

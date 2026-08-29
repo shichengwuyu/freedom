@@ -45,6 +45,8 @@ func main() {
 	}
 	// Sprint 4：通用 task 后台 worker（5s 轮询 pending/running task）
 	// Sprint 4 暂不注册任何 handler；worker 启动后空闲不报错
+	// 新能力接入：调 service.RegisterTaskHandler(typeStr, handlerImpl) 即可
+	// 参考实现：service/task_handler_example.go
 	service.StartTaskWorker()
 	service.StartCanvasProjectCleanupScheduler()
 	service.StartBalanceHoldSweepScheduler()
@@ -53,6 +55,8 @@ func main() {
 	service.StartAffiliateSettlementScheduler()
 	handler.StartVideoTaskPoller()
 	handler.StartStoryboardTaskRunner()
+	// novel-workflow v2：启动工作流状态聚合 worker（5s 轮询）
+	service.StartNovelWorkflowWorker(context.Background())
 
 	// 优雅关闭：捕获 SIGINT/SIGTERM，等待 in-flight 请求完成再退出。
 	srv := &http.Server{

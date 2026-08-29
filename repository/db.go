@@ -81,6 +81,9 @@ func DB() (*gorm.DB, error) {
 			&model.UserGroup{},
 			// Sprint 4：通用 task 模型（新能力入口；不替代 4 套旧 task 表）
 			&model.Task{},
+			// novel-workflow v2：工作流编排层（5 层 + 节点状态机）
+			&model.NovelWorkflowRun{},
+			&model.NovelWorkflowNode{},
 		)
 	})
 	return db, dbErr
