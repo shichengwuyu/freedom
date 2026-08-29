@@ -93,6 +93,11 @@ func New() *gin.Engine {
 	v1.POST("/novel/composition/:id/start", gin.WrapF(handler.StartCompositionTask))
 	v1.POST("/novel/composition/:id/stop", gin.WrapF(handler.StopCompositionTask))
 	v1.POST("/novel/composition/:id/retry", gin.WrapF(handler.RetryCompositionTask))
+	// novel-workflow v2：export-layer
+	v1.GET("/novel/export/metadata", gin.WrapF(handler.GetExportMetadata))
+	v1.POST("/novel/export/caption", gin.WrapF(handler.GeneratePlatformCaption))
+	v1.GET("/novel/export/history", gin.WrapF(handler.ListExportHistory))
+	v1.GET("/novel/export/download", gin.WrapF(handler.DownloadComposition))
 	v1.DELETE("/user-tokens/:id", func(c *gin.Context) {
 		handler.DeleteUserTokenHandler(c.Writer, c.Request)
 	})
