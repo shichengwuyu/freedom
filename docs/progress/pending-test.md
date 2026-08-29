@@ -5,6 +5,41 @@ description: 当前版本已实现但仍需人工验证的变更项
 
 # 待测试
 
+## Sprint 4.2：Sprint 4 收尾（集成验证）
+
+Sprint 4 落地了通用 Task 模型 + worker 框架，但**没真正接管任何 task**。Sprint 4.2 提供完整可复制的 handler 模板 + 文档收口。
+
+### 改动一览
+- **新建** `service/task_handler_example.go` —— 完整可复制的 `TaskHandler` 实现（image_batch 场景，含详细中文注释）
+- **修改** `main.go` `StartTaskWorker()` 加注释："新能力接入 = 调 RegisterTaskHandler"
+- **文档** `docs/backend/backend-database.md` 加 `tasks` 表完整结构
+
+### 需人工验证
+
+1. **服务启动后 worker 正常 idle**：
+   - `go run .` 启动
+   - 5s 后日志无 `task worker: no handler` 警告
+   - `tasks` 表 0 条数据时 worker 不报错
+2. **example handler 启用**（手动注册）：
+   ```go
+   // 在测试脚本 / init() 里
+   service.RegisterTaskHandler(model.TaskTypeImageBatch, &service.ExampleTaskHandler{})
+   // 或者直接调 helper
+   service.RegisterExampleTaskHandler()
+   ```
+   - 创建一条 task 记录到 `tasks` 表（type=image_batch, status=pending, payload={"simulateFail":false}）
+   - 5s 后看 worker 跑通：status=running → 5s 后 status=success，progress=100
+3. **example handler 失败路径**：
+   - 创建 task，payload={"simulateFail":true}
+   - 5s 后看 status=failure，error_message="vendor contract not available"
+4. **tasks 表查询**：
+   - `GET /api/v1/tasks` → 返回刚才创建 + 完成的所有 task
+5. **回归**：
+   - Sprint 1-3 全部功能不变
+   - 现有 video_tasks 行为不变（`service/video_task.go` 没动）
+   - canvas_image_tasks / canvas_audio_tasks / storyboard_tasks 行为不变
+   - 前端任何页面不变
+
 ## Sprint 4（部分）：通用 Task 框架
 
 Sprint 4 已完成"骨头"——通用 task 数据模型 + 通用 worker 框架 + tasks 通用查询接口。**未完成** UpDream/NewWow 视频 vendor 适配、canvas_image_task 接 Sprint 2 selector、video poller 接入通用 worker。

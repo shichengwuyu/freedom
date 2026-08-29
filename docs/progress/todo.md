@@ -7,6 +7,65 @@ description: 当前项目后续值得处理的事项
 
 本文档用来记录当前项目后续比较值得处理的事项。
 
+## 方向调整：不做限速 / 不做会员等级 / 只做卡密
+
+2026-08-29 用户明确调整方向：
+- ❌ **不做 quota 限速**（"有钱就能一直调用"）
+- ❌ **不做会员等级 / group 定价**（Sprint 3 阶梯定价保留 —— 因为已经实现；但不做 monthly quota / 升级 / 续费 / 订阅相关）
+- ✅ **只做卡密**（LicenseKey 兑换余额）
+
+Sprint 3 UserGroup 字段保留（已经实现且无破坏性）；但后续 Sprint 5+ 不再往 group 维度加 quota / subscription / 自动续费。
+
+### 卡密现状（2026-08-29 摸代码发现已经全部实现）
+
+摸代码发现 Freedom 的**卡密能力早已完整**（todo.md 顶部"已完成：支付系统重构"段落里有提）：
+
+- **数据模型**：`model/license_key.go` 有 `LicenseKey`（id / key / faceValueCents / status / usedBy / usedAt / batchName / createdBy）+ `LicenseRedeemLog`（id / licenseKeyId / keyMasked / userId / userName / faceValueCents / createdAt）
+- **admin 接口**（`handler/admin_license_key.go`）：`POST /api/admin/license-keys/import`（批量导入）、`GET /api/admin/license-keys`（列表）、`POST /api/admin/license-keys/generate`（自动生成 + TXT 下载）
+- **用户接口**（`router/router.go:53/153/154`）：`GET /api/license/purchase-config`（公开）、`POST /api/v1/license/redeem`（兑换）、`GET /api/v1/license/redeem-logs`（我的兑换记录）
+- **service**：`service/license_key.go` 有 `ImportLicenseKeys` / `RedeemLicenseKey` / `MyRedeemLogs` / `AdminListLicenseKeys` 等
+- **前端**：`web/src/app/(user)/wallet/page.tsx` 已有"兑换" tab + 卡密兑换表单
+
+**Sprint 5 quota 改造已撤销**（`model/setting.go::PrivateSetting.GroupQuotas` 字段已删；其他 quota 相关文件未创建）。
+
+**没有可做的新增卡密功能**——除非有具体诉求（比如"扫码支付自动发卡"、"卡密有效期"、"卡密绑定用户"等）。等你给具体诉求再单独开 Sprint。
+
+Sprint 4 落地了通用 Task 模型 + 通用 worker 框架，但没有真正接管任何 task 也没注册任何 handler。Sprint 4.2 用最小代价收尾：
+
+- **新建** `service/task_handler_example.go` —— 完整可复制的 `TaskHandler` 实现模板（image_batch 场景），含详细中文注释（"为什么这么写"）。未来 Sprint 5/6 直接 fork 这个文件。新增 helper `RegisterExampleTaskHandler()` 用于显式 opt-in
+- **修改** `main.go` `StartTaskWorker()` 启动时加注释说明："新能力接入 = 调 RegisterTaskHandler"
+- **文档**：`docs/backend/backend-database.md` 加 `tasks` 表完整结构 + 通用 worker 状态机设计 + handler 注册指南
+
+**为什么不接现有 video poller 到通用 worker**：
+- 现有 `service/video_task.go::StartVideoTaskPoller` 已经是 new-api 形态的成熟 poller（信号量并发限制、panic 兜底、清理过期、进度唤醒）
+- 改造业务行为完全不变，风险大收益小
+- 留 Sprint 4.3（如果做）再抽象
+
+**Why**：
+- 零回归风险
+- 给未来 Sprint 5（quota 限速）/ Sprint 6（实时进度推送）提供"接入指南"
+- Sprint 4 真正收尾
+
+**How to apply（后续 Sprint 怎么用）**：
+- Sprint 5 quota 限速：fork example handler → 在 `Submit` 之前查 user 当月用量 → 超限返 `failure` + `error_message="quota exceeded"`
+- Sprint 6 实时进度：fork example handler → 在 `Poll` 时通过 SSE 推 `progress` 变化
+- 任何新能力：调 `service.RegisterTaskHandler(typeStr, handlerImpl)` → 创建 task → 通用 worker 自动接管
+
+## 误判澄清：Sprint 4 plan 中"UpDream/NewWow 视频 vendor 缺口"和"canvas_image_task 没接 Sprint 2 selector"已不成立
+
+实施 Sprint 4.1 时实际摸代码发现：
+
+1. **UpDream 视频 vendor 三个方法已完整实现**（`service/vendor_updream.go`）：
+   - `SubmitVideo` (line 801)：调 `/api/ai/generate-video/async` 提交任务
+   - `GetTaskStatus` (line 704)：调 `/api/ai/task/{id}` 轮询
+   - `GenerateVideo` (line 994)：同步等待视频生成
+2. **NewWow 视频 vendor 三个方法同样已实现**（`service/vendor_newwow.go:553/630`）：canvas→shot→generate-video 三步流程 + `/agent/story-canvas/batch-query-status` 轮询
+3. **canvas_image_task 已走 Sprint 2 selector**：路径是 `handler/canvas_task.go::executeCanvasAIRequest` (line 402) 直接调 `proxyAIRequest`，而 `proxyAIRequest` 在 Sprint 2 改造中已包含 `runRemoteChannelWithRetry` —— **canvas_image_task 自动获得了 retry + failover + cooldown 能力**
+
+P0 报告（`[Script-to-Video Vendor Mismatch]`）里 UpDream/NewWow 视频"TODO"实际**已在 Sprint 1.x 期间补完**（之前没仔细看代码就标 TODO 是 plan 误判）。
+
+**Sprint 4.1 不需要做实际改动**。下面"进行中：Sprint 4 通用 Task 模型（部分完成）"状态不变。
+
 ## 进行中：Sprint 4 通用 Task 模型（部分完成）
 
 Sprint 4 是工作量较大的 Sprint（涉及 8 个新文件 + 4 个修改）。本 Sprint 已完成"骨头"部分：
