@@ -86,6 +86,13 @@ func New() *gin.Engine {
 	v1.GET("/bgm/custom", gin.WrapF(handler.ListBgmCustoms))
 	v1.POST("/bgm/custom/upload", gin.WrapF(handler.UploadBgmCustom))
 	v1.DELETE("/bgm/custom/:id", gin.WrapF(handler.DeleteBgmCustom))
+	// novel-workflow v2：composition-layer
+	v1.POST("/novel/composition", gin.WrapF(handler.CreateCompositionTask))
+	v1.GET("/novel/composition", gin.WrapF(handler.ListCompositionTasks))
+	v1.GET("/novel/composition/:id", gin.WrapF(handler.GetCompositionTask))
+	v1.POST("/novel/composition/:id/start", gin.WrapF(handler.StartCompositionTask))
+	v1.POST("/novel/composition/:id/stop", gin.WrapF(handler.StopCompositionTask))
+	v1.POST("/novel/composition/:id/retry", gin.WrapF(handler.RetryCompositionTask))
 	v1.DELETE("/user-tokens/:id", func(c *gin.Context) {
 		handler.DeleteUserTokenHandler(c.Writer, c.Request)
 	})

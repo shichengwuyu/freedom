@@ -90,6 +90,8 @@ func DB() (*gorm.DB, error) {
 			&model.ShotSubtitle{},
 			// novel-workflow v2：bgm-layer
 			&model.BgmCustom{},
+			// novel-workflow v2：composition-layer
+			&model.CompositionTask{},
 		)
 	})
 	return db, dbErr
