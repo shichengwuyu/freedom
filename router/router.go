@@ -61,6 +61,8 @@ func New() *gin.Engine {
 	// Sprint 1.1：用户自建 API Key（OpenAI 兼容 sk- 格式）CRUD
 	v1.POST("/user-tokens", gin.WrapF(handler.CreateUserTokenHandler))
 	v1.GET("/user-tokens", gin.WrapF(handler.ListUserTokensHandler))
+	// Sprint 4：通用 task 查询（仅 Sprint 4 之后新增能力的 task；旧 4 套表各自有接口）
+	v1.GET("/tasks", gin.WrapF(handler.UserTasks))
 	v1.DELETE("/user-tokens/:id", func(c *gin.Context) {
 		handler.DeleteUserTokenHandler(c.Writer, c.Request)
 	})

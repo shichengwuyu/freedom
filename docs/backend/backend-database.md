@@ -46,6 +46,7 @@ description: 当前后端主要数据表与字段说明
 - `user_vendor_accounts`（用户绑定供应商账户，详见同文档 §3.2）
 - `vendor_api_samples`（浏览器插件嗅探的供应商内部接口样本，UpDream/NewWow 无开放平台时用于后端学习接口形状）
 - `user_tokens`（Sprint 1.1 引入：用户自建 OpenAI 兼容 sk- API Key，详见下文 §user_tokens）
+- `user_groups`（Sprint 3 引入：用户组表，详见下文 §user_groups）
 
 后续新增表时再同步补充本文档，未实际使用的规划表不提前写入。
 
@@ -513,3 +514,23 @@ S3/R2 与 WebDAV 共用的媒体文件索引表，不保存画布、素材列表
 3. `Authorization: Bearer <jwt>` → `service.CurrentAuthUser`（兼容旧客户端）
 
 **关联字段**：`ai_call_logs.token_id` 在 Sprint 1.1 加入，外键概念上指向 `user_tokens.id`（无 DB 外键约束，便于跨表清理）。`balance_logs.extra` 的 JSON 也会带 `tokenId` 字段。
+
+### user_groups
+
+用户组表（Sprint 3 引入）。内置 4 个 group（default / plus / pro / enterprise），启动期 `service.SeedDefaultUserGroups` 自动 seed。
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `id` | varchar(64) | 主键；建议值：default / plus / pro / enterprise（自定义 group 用更具体命名） |
+| `name` | varchar(64) | 内部名（uniqueIndex） |
+| `display_name` | varchar(64) | 前端展示名（"默认" / "PLUS" / "PRO" / "Enterprise"） |
+| `sort` | int | 排序（升序） |
+| `is_default` | bool | 是否为默认组（"default" 必为 true） |
+| `is_active` | bool | 是否启用（false 时公开 pricing 跳过该 group） |
+| `remark` | varchar(255) | 备注 |
+| `created_at` | time.Time | 创建时间 |
+| `updated_at` | time.Time | 更新时间 |
+
+**关联字段**：`users.group_id` 外键概念上指向 `user_groups.id`（无 DB 外键约束，便于 group 删除时迁移）。`ModelCost.GroupPricingJSON`（JSON 文本）按 group ID 配置 per-model per-group 倍率覆盖。`PrivateSetting.GroupRatios`（JSON map）配置 group 维度统一倍率（缺省 1.0）。
+
+**计费公式**：`cents = baseUnit * GetGroupRatio(groupID) * ModelCost.GetGroupPricingRatio(groupID)`，向下取整。

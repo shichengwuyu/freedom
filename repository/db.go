@@ -79,6 +79,8 @@ func DB() (*gorm.DB, error) {
 			&model.UserToken{},
 			// Sprint 3：用户组（阶梯定价维度）
 			&model.UserGroup{},
+			// Sprint 4：通用 task 模型（新能力入口；不替代 4 套旧 task 表）
+			&model.Task{},
 		)
 	})
 	return db, dbErr

@@ -18,6 +18,7 @@ export type AdminUser = {
     avatarUrl: string;
     role: "user" | "admin";
     balanceCents: number;
+    groupId: string; // Sprint 3
     affCode: string;
     affCount: number;
     inviterId: string;

@@ -2,6 +2,7 @@
 
 import {
     CreditCardFilled,
+    DollarOutlined,
     GiftOutlined,
     HistoryOutlined,
     KeyOutlined,
@@ -43,6 +44,7 @@ import { useUserStore } from "@/stores/use-user-store";
 import { useConfigStore } from "@/stores/use-config-store";
 import { useCopyText } from "@/hooks/use-copy-text";
 import { ApiKeyManager } from "./components/api-key-manager";
+import { PricingTable } from "./components/pricing-table";
 
 // 单张图片估算成本：4 分 = ¥0.04（前端静态估算常量，仅做估算提示用）。
 const PER_IMAGE_COST_CENTS = 4;
@@ -687,6 +689,21 @@ function WalletPageContent() {
                                 children: (
                                     <div className="pt-2">
                                         <ApiKeyManager token={token} />
+                                    </div>
+                                ),
+                            },
+                            {
+                                // Sprint 3：价目表
+                                key: "pricing",
+                                label: (
+                                    <span>
+                                        <DollarOutlined className="mr-1" />
+                                        价目表
+                                    </span>
+                                ),
+                                children: (
+                                    <div className="pt-2">
+                                        <PricingTable currentUserGroupId={user?.groupId ?? ""} />
                                     </div>
                                 ),
                             },

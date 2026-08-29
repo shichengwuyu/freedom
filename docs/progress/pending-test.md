@@ -5,6 +5,83 @@ description: 当前版本已实现但仍需人工验证的变更项
 
 # 待测试
 
+## Sprint 4（部分）：通用 Task 框架
+
+Sprint 4 已完成"骨头"——通用 task 数据模型 + 通用 worker 框架 + tasks 通用查询接口。**未完成** UpDream/NewWow 视频 vendor 适配、canvas_image_task 接 Sprint 2 selector、video poller 接入通用 worker。
+
+### 已落地的改动
+- `model/task.go`：`Task` struct + 状态常量
+- `repository/task.go`：5 个 CRUD 函数
+- `service/task_worker.go`：`TaskHandler` 接口 + 5s 轮询 worker + 状态机
+- `handler/task.go` + `GET /api/v1/tasks`：通用 task 列表查询
+- `main.go`：`StartTaskWorker()` 启动
+
+### 需人工验证
+
+1. **建表**：`go run .` 启动后 `tasks` 表自动建出；字段 / 索引 / 类型对照 `docs/backend/backend-database.md` §tasks（待补）
+2. **worker 启动**：服务启动后 worker 后台空闲运行（无 task 不报错）
+3. **GET /api/v1/tasks**：
+   - 登录后调 `GET /api/v1/tasks` → 返回空列表 `{items: [], total: 0}`
+   - 直接调（未登录）→ 401
+
+### 回归（确保没破坏）
+- 现有 4 套 task 表（video_tasks / canvas_image_tasks / canvas_audio_tasks / storyboard_tasks）行为完全不变
+- Sprint 1-3 全部功能不变
+
+### 未完成（Sprint 4.1 续做）
+- UpDream / NewWow 视频 vendor 适配
+- canvas_image_task 改用 Sprint 2 selector
+- video_task poller 接入通用 worker
+
+## Sprint 3：UserGroup 阶梯定价
+
+把 Freedom 从"一刀切"定价升级为 new-api 形态的"用户组 + 倍率"商业化基础。
+
+### 改动一览
+- **后端**：
+  - `user_groups` 表（AutoMigrate 自动建）+ 4 个内置 group
+  - `User.GroupID` 关联 + `AuthUser.GroupID` DTO
+  - `ModelCost.GroupPricingJSON` per-model per-group 覆盖
+  - `PrivateSetting.GroupRatios` group 维度统一倍率
+  - `service/pricing.go::CalcUnitCostCents` 计费公式
+  - 4 个 handler 计费点改用新公式
+  - `GET /api/pricing` 公开接口
+- **前端**：
+  - admin 用户编辑加 groupId
+  - `/wallet/pricing` 第 5 个 tab
+  - 公开 pricing client
+
+### 需人工验证
+
+1. **建表 + seed**：服务启动后 `user_groups` 表有 4 行（default/plus/pro/enterprise），displayName 是"默认/PLUS/PRO/Enterprise"
+2. **GET /api/pricing**：
+   - 不需登录
+   - 返回 `groups: [4 个]` + `models: [所有有 modelCost 的]`
+   - 每个 model 的 `groups[]` 数组有 4 个 group 的 unitCents
+3. **后端计费倍率**（最关键）：
+   - 用 sk-token 调 `gpt-4o-mini`（基础 CostCents=10）→ 扣 10 cents（默认 group）
+   - admin 在 `settings.private.groupRatios` 加 `"plus": 0.5`（JSON 编辑）
+   - admin 把该用户 groupId 改成 `plus`
+   - 同样调 → 扣 5 cents
+   - admin 在 ModelCost 加 `GroupPricingJSON = {"plus": 0.3}`
+   - 调 → 扣 1 cents（10 * 0.5 * 0.3 = 1.5 → int 1）或 3 cents（具体看公式）
+4. **公开定价页 `/wallet/pricing`**：
+   - 登录用户看到 4 个 group 列（默认 / PLUS / PRO / Enterprise）
+   - 当前用户 group 列高亮（蓝色"当前"Tag）
+   - 每行的 group 价格按倍率着色（默认=灰，PLUS 8 折=绿"20% off"）
+5. **admin 改用户 group**：
+   - admin 后台用户列表编辑表单加 groupId Select
+   - admin 把某用户从 default → plus
+   - 该用户后续计费按 plus
+6. **回归**：
+   - 现有 `user.GroupID = ""` 老用户：自动走 default 1.0x（行为完全不变）
+   - 现有 `consumeUserBalanceWithHold` 调用方：cents 字段语义不变
+   - Sprint 1-2.6 全部行为不变
+7. **vendor 路径不受影响**：UpDream 用户用 sk-token 调图 → 走 vendor，**不**走 group pricing
+8. **admin 角色不变**：admin 与 group 正交（admin 也是 default/plus 用户，享受 group 折扣）
+9. **空 groupRatio 时安全 fallback**：admin 不配置 groupRatios → 所有 group 都是 1.0x（不报错）
+10. **公开 pricing 不需登录**：直接 `curl http://localhost:3000/api/pricing` 拿到完整 JSON
+
 ## Sprint 2.6：admin 渠道健康度页面
 
 把 Sprint 2 渠道失败诊断 ring buffer 可视化为 admin 看板。

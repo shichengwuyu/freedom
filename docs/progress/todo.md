@@ -7,6 +7,72 @@ description: 当前项目后续值得处理的事项
 
 本文档用来记录当前项目后续比较值得处理的事项。
 
+## 进行中：Sprint 4 通用 Task 模型（部分完成）
+
+Sprint 4 是工作量较大的 Sprint（涉及 8 个新文件 + 4 个修改）。本 Sprint 已完成"骨头"部分：
+
+- **数据层**：
+  - `model/task.go` 新增：通用 `Task` 模型 + 6 个 type 常量 + 5 个 status 常量
+  - `repository/task.go` 新增：5 个 CRUD 函数（Save / GetByID / ListPendingTasks / ListUserTasks / UpdateTaskStatus / IncrementTaskAttempts）
+  - AutoMigrate 加 `&model.Task{}`
+- **后端 worker**：
+  - `service/task_worker.go` 新增：`TaskHandler` 接口（Submit / Poll / Cancel）+ `RegisterTaskHandler` 注册 + `StartTaskWorker` 后台循环 + 状态机
+  - main.go 启动期调 `StartTaskWorker`
+- **API**：
+  - `handler/task.go` 新增：`UserTasks` handler
+  - `router/router.go` 加 `GET /api/v1/tasks`
+
+### 留到 Sprint 4.1（后续）
+- 补 UpDream / NewWow 视频 vendor 适配器（`SubmitVideo` / `GenerateVideo` / `GetTaskStatus`）—— 嗅探契约缺失，先返 `ErrTaskNotSupported` fallback 官方
+- canvas_image_task 改用 Sprint 2 selector + retry（当前是单次 select）
+- video_task poller 改用通用 worker 框架
+- 注册 videoHandler 让通用 worker 真正工作
+
+### 留到 Sprint 4.2（更后续）
+- 4 套旧 task 表（video_tasks / canvas_image_tasks / canvas_audio_tasks / storyboard_tasks）数据迁移到通用 tasks 表
+- 前端 type 同步升级（业务级破坏；需要前端代码层面配合）
+- admin 通用 task 查询（`/api/admin/tasks`）
+
+## 已完成：Sprint 3 UserGroup 阶梯定价
+
+把 Freedom 从"一刀切"定价升级为 new-api 形态的"用户组 + 倍率"商业化基础。
+
+- **数据层**：
+  - 新表 `user_groups`（`model/user_group.go`）：内置 4 个 group（default / plus / pro / enterprise），AutoMigrate 自动建表
+  - `model/user.go::User` 加 `GroupID string`（db column + AuthUser DTO）
+  - `model/setting.go::ModelCost` 加 `GroupPricingJSON`（per-model per-group 倍率覆盖）+ `GetGroupPricingRatio` helper
+  - `model/setting.go::PrivateSetting` 加 `GroupRatios map[string]float64`（group 维度统一倍率）
+- **后端业务**：
+  - `service/user_group.go` 新增：`SeedDefaultUserGroups`（启动期 seed）+ `ListActiveUserGroups`
+  - `service/pricing.go` 新增：`GetGroupRatio(groupID)` + `CalcUnitCostCents(model, groupID)`（计费公式：base * groupRatio * modelGroupRatio，向下取整）+ `ListPublicPricing`（公开 pricing 页数据）
+  - `handler/pricing.go` 新增：`GetPricing`（公开接口，不需登录）
+  - `service/auth.go` 新用户默认 `GroupID = "default"`；admin 改用户时支持透传
+  - `handler/auth.go::saveUserRequest` 加 `GroupID` 字段
+  - `main.go` 启动期调 `SeedDefaultUserGroups`
+  - `router/router.go` 加 `GET /api/pricing`
+  - 4 个 handler 计费点（`handler/ai.go` / `handler/video_task.go` / `service/workflow_agent.go`）改用 `CalcUnitCostCents` 算 per-unit cost
+- **前端**：
+  - `services/api/auth.ts::AuthUser` 加 `groupId`
+  - `services/api/admin.ts::AdminUser` 加 `groupId`
+  - `services/api/pricing.ts` 新增：`fetchPricing` / `listActiveUserGroups` + 4 个 TypeScript 类型
+  - `admin/users/page.tsx` 编辑表单加 `groupId` Select（4 个内置 group）
+  - `user/wallet/page.tsx` 加第 5 个 tab "价目表"（`DollarOutlined` 图标）
+  - `user/wallet/components/pricing-table.tsx` 新增：价目表组件（group 列高亮 + 折扣 Tag 着色）
+- **兼容性**：
+  - `user.GroupID = ""` 兼容（空 → 走 default，倍率 1.0）
+  - 老配置无 `GroupRatios` 字段时 `GetGroupRatio` 返回 1.0（安全默认）
+  - 老配置无 `ModelCost.GroupPricingJSON` 时 `GetGroupPricingRatio` 返回 1.0
+  - 现有 vendor 路径（`dispatchVendorProxy`）**不**走 group pricing
+  - `ConsumeUserBalanceWithHold` 函数签名**不**变（cents 外面算好传进来）
+
+### 后续可优化（Sprint 3.5 候选）
+- admin 完整 UserGroup CRUD UI（当前只 hardcode 4 个内置 group）
+- 余额通知（"余额 < 阈值"推送）
+- 卡密兑换升级 PLUS（admin 创建卡密时指定 group）
+- "升 PLUS"按钮（用户自助购买，扫码支付 + 自动升级 group）
+- 用户配额 / 月卡（按 group 限制每月生成次数）
+- admin groupRatios 编辑 UI（当前 admin 改 settings.private JSON）
+
 ## 已完成：Sprint 2.6 admin 渠道健康度页面
 
 把 Sprint 2 落地的"渠道失败诊断"能力可视化到 admin 页面，让 admin 一眼看到哪些 channel 在抽风 / 哪些在冷却 / 影响哪些模型。
