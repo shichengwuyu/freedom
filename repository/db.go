@@ -84,6 +84,8 @@ func DB() (*gorm.DB, error) {
 			// novel-workflow v2：工作流编排层（5 层 + 节点状态机）
 			&model.NovelWorkflowRun{},
 			&model.NovelWorkflowNode{},
+			// novel-workflow v2：shot-dubbing-node
+			&model.ShotDubbing{},
 		)
 	})
 	return db, dbErr

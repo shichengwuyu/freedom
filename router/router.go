@@ -71,6 +71,10 @@ func New() *gin.Engine {
 	v1.POST("/novel/workflows/:id/nodes/:nodeId/start", gin.WrapF(handler.StartNovelWorkflowNode))
 	v1.POST("/novel/workflows/:id/nodes/:nodeId/cancel", gin.WrapF(handler.CancelNovelWorkflowNode))
 	v1.POST("/novel/workflows/:id/nodes/:nodeId/retry", gin.WrapF(handler.RetryNovelWorkflowNode))
+	// novel-workflow v2：shot-dubbing-node
+	v1.POST("/novel/dubbing/dispatch", gin.WrapF(handler.DispatchShotDubbing))
+	v1.POST("/novel/dubbing/dispatch-project", gin.WrapF(handler.DispatchProjectDubbing))
+	v1.GET("/novel/dubbing", gin.WrapF(handler.ListShotDubbings))
 	v1.DELETE("/user-tokens/:id", func(c *gin.Context) {
 		handler.DeleteUserTokenHandler(c.Writer, c.Request)
 	})
