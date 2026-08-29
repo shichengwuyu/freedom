@@ -1,6 +1,6 @@
 "use client";
 
-import { AuditOutlined, CreditCardOutlined, FileTextOutlined, HomeOutlined, LogoutOutlined, PictureOutlined, SettingOutlined, SoundOutlined, TransactionOutlined, UserOutlined } from "@ant-design/icons";
+import { ApiOutlined, AuditOutlined, CreditCardOutlined, FileTextOutlined, HomeOutlined, LogoutOutlined, PictureOutlined, SettingOutlined, SoundOutlined, TransactionOutlined, UserOutlined } from "@ant-design/icons";
 import { Button, Flex, Layout, Menu, Typography, theme } from "antd";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -16,6 +16,7 @@ const adminMenus = [
     { key: "/admin/license-keys", icon: <CreditCardOutlined />, label: "卡密管理" },
     { key: "/admin/balance-logs", icon: <TransactionOutlined />, label: "余额日志" },
     { key: "/admin/ai-logs", icon: <AuditOutlined />, label: "AI 日志" },
+    { key: "/admin/channels-health", icon: <ApiOutlined />, label: "渠道健康" },
     { key: "/admin/announcements", icon: <SoundOutlined />, label: "公告管理" },
     { key: "/admin/prompts", icon: <FileTextOutlined />, label: "提示词管理" },
     { key: "/admin/assets", icon: <PictureOutlined />, label: "素材库" },
@@ -38,16 +39,18 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
               ? "/admin/prompts"
               : pathname.startsWith("/admin/announcements")
                 ? "/admin/announcements"
-                : pathname.startsWith("/admin/ai-logs")
-                  ? "/admin/ai-logs"
-                  : pathname.startsWith("/admin/balance-logs")
-                    ? "/admin/balance-logs"
-                    : pathname.startsWith("/admin/license-keys")
-                      ? "/admin/license-keys"
-                      : pathname.startsWith("/admin/users")
-                        ? "/admin/users"
-                        : "";
-    const pageTitle = pathname.startsWith("/admin/settings") ? "系统设置" : pathname.startsWith("/admin/assets") ? "素材库管理" : pathname.startsWith("/admin/prompts") ? "提示词管理" : pathname.startsWith("/admin/announcements") ? "公告管理" : pathname.startsWith("/admin/ai-logs") ? "AI 日志" : pathname.startsWith("/admin/balance-logs") ? "余额日志" : pathname.startsWith("/admin/license-keys") ? "卡密管理" : "用户管理";
+                : pathname.startsWith("/admin/channels-health")
+                  ? "/admin/channels-health"
+                  : pathname.startsWith("/admin/ai-logs")
+                    ? "/admin/ai-logs"
+                    : pathname.startsWith("/admin/balance-logs")
+                      ? "/admin/balance-logs"
+                      : pathname.startsWith("/admin/license-keys")
+                        ? "/admin/license-keys"
+                        : pathname.startsWith("/admin/users")
+                          ? "/admin/users"
+                          : "";
+    const pageTitle = pathname.startsWith("/admin/settings") ? "系统设置" : pathname.startsWith("/admin/assets") ? "素材库管理" : pathname.startsWith("/admin/prompts") ? "提示词管理" : pathname.startsWith("/admin/announcements") ? "公告管理" : pathname.startsWith("/admin/channels-health") ? "渠道健康" : pathname.startsWith("/admin/ai-logs") ? "AI 日志" : pathname.startsWith("/admin/balance-logs") ? "余额日志" : pathname.startsWith("/admin/license-keys") ? "卡密管理" : "用户管理";
 
     useEffect(() => {
         if (!isReady) return;

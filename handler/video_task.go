@@ -142,7 +142,7 @@ func proxyAIVideoTaskRequest(w http.ResponseWriter, r *http.Request) {
 	}
 	holdID := ""
 	if cents > 0 {
-		holdID, err = service.ConsumeUserBalanceWithHold(user.ID, modelName, cents, upstreamPath, readClientVideoTaskIDOrRequestID(r))
+		holdID, err = service.ConsumeUserBalanceWithHold(user.ID, modelName, cents, upstreamPath, readClientVideoTaskIDOrRequestID(r), tokenIDFromContext(r.Context()))
 		if err != nil {
 			FailError(w, err)
 			return

@@ -430,7 +430,7 @@ func AdjustUserBalance(id string, cents int) (model.User, error) {
 //
 // requestID 必须是调用方生成的稳定幂等键（前端 UUID 或后端 task ID），失败的请求也必须传
 // 相同的 requestID，否则退款会变成凭空涨分（这是 no-hold refund 的最高风险场景）。
-func ConsumeUserBalanceWithHold(userID, modelName string, cents int, path, requestID string) (string, error) {
+func ConsumeUserBalanceWithHold(userID, modelName string, cents int, path, requestID string, tokenID ...string) (string, error) {
 	if cents <= 0 {
 		return "", nil
 	}
@@ -493,7 +493,12 @@ func ConsumeUserBalanceWithHold(userID, modelName string, cents int, path, reque
 		if res.RowsAffected == 0 {
 			return safeMessageError{message: "余额不足"}
 		}
-		extra, _ := json.Marshal(map[string]string{"model": modelName, "path": path, "holdId": hold.ID})
+		extraMap := map[string]string{"model": modelName, "path": path, "holdId": hold.ID}
+		// Sprint 1.1：可选 tokenID（Bearer sk- 鉴权时由 handler 传入）
+		if len(tokenID) > 0 && strings.TrimSpace(tokenID[0]) != "" {
+			extraMap["tokenId"] = strings.TrimSpace(tokenID[0])
+		}
+		extra, _ := json.Marshal(extraMap)
 		var afterUser model.User
 		if e := tx.Where("id = ?", userID).First(&afterUser).Error; e != nil {
 			return e

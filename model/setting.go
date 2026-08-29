@@ -26,6 +26,27 @@ type ModelChannel struct {
 	Timeout     int               `json:"timeout"`
 	Enabled     bool              `json:"enabled"`
 	Remark      string            `json:"remark"`
+
+	// Sprint 2 新增：渠道选择器（多 key + 优先级 + 状态码 failover）
+	// 字段兼容：以下字段均为 omitempty，老配置 JSON 反序列化时全部为默认值，行为不变。
+	Priority          int      `json:"priority,omitempty"`           // 数字小=优先（默认 0，与 Weight 随机选择兼容）
+	StatusCodeMapping string   `json:"statusCodeMapping,omitempty"`  // "429,500,502,503,504" 命中即视为该渠道失败；空=默认 429/5xx
+	CooldownSeconds   int      `json:"cooldownSeconds,omitempty"`    // 失败后冷却秒数（默认 60s）
+	Keys              []string `json:"keys,omitempty"`              // 多 key 列表；空时回退到 APIKey（兼容老配置）
+	Group             string   `json:"group,omitempty"`             // 预留 Sprint 3（Sprint 2 不强校验；所有 enabled 都在 default group）
+	Capability        string   `json:"capability,omitempty"`        // "text"/"image"/"video"/"audio"；空=通用（匹配所有 capability 查询）
+	AutoBan           bool     `json:"autoBan,omitempty"`           // 失败后是否自动冷却（默认 true，false=不冷却）
+}
+
+// ChannelKeys 返回该渠道的完整 key 列表（兼容老配置：Keys 为空时返回 [APIKey]）。
+func (c *ModelChannel) ChannelKeys() []string {
+	if len(c.Keys) > 0 {
+		return c.Keys
+	}
+	if c.APIKey != "" {
+		return []string{c.APIKey}
+	}
+	return nil
 }
 
 // ModelCostUnit 扣费单位。
@@ -87,6 +108,14 @@ type PublicModelChannelInfo struct {
 	Timeout     int               `json:"timeout"`
 	Enabled     bool              `json:"enabled"`
 	Remark      string            `json:"remark"`
+
+	// Sprint 2 新增：前端展示用
+	Priority          int      `json:"priority,omitempty"`
+	StatusCodeMapping string   `json:"statusCodeMapping,omitempty"`
+	CooldownSeconds   int      `json:"cooldownSeconds,omitempty"`
+	KeyCount          int      `json:"keyCount,omitempty"` // 多 key 数量（不返明文，仅数量）
+	Group             string   `json:"group,omitempty"`
+	Capability        string   `json:"capability,omitempty"`
 }
 
 // PublicSetting 公开配置。

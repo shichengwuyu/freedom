@@ -45,6 +45,7 @@ description: 当前后端主要数据表与字段说明
 - `vendors`（供应商系统级元信息，详见《多供应商云端切换架构设计文档》§3.1）
 - `user_vendor_accounts`（用户绑定供应商账户，详见同文档 §3.2）
 - `vendor_api_samples`（浏览器插件嗅探的供应商内部接口样本，UpDream/NewWow 无开放平台时用于后端学习接口形状）
+- `user_tokens`（Sprint 1.1 引入：用户自建 OpenAI 兼容 sk- API Key，详见下文 §user_tokens）
 
 后续新增表时再同步补充本文档，未实际使用的规划表不提前写入。
 
@@ -482,3 +483,33 @@ S3/R2 与 WebDAV 共用的媒体文件索引表，不保存画布、素材列表
 | `created_at` | string | 创建时间 |
 
 触发逻辑：被邀请人每次模型消费扣费成功后，`service/affiliate.go` 的 `SettleCommissionOnConsume` 写 `pending` 流水（比例读 `settings.private.affiliate` 的阶梯配置，默认不开启）；`users.inviter_id` 在 `service/auth.go` 的 `Register` 与 `LoginWithLinuxDo` 注册分支落地，`aff_count` 同步 +1。每日批结算由 `service.StartAffiliateSettlementScheduler()` 在 `main.go` 启动。
+
+### user_tokens
+
+用户自建 API Key（Sprint 1.1 引入）。OpenAI 兼容 sk- 格式，供外部 SDK / Cursor / Cline / curl 直接对接 Freedom 当网关用。明文只在创建时一次性返回，库存 SHA-256 hash。
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `id` | string | 主键，格式 `utok-xxxxxxxx` |
+| `user_id` | string | 所属用户 ID，索引 |
+| `name` | string | 用户自定义名称（最长 50 字符） |
+| `key_prefix` | varchar(32) | 明文前 12 位（含 `sk-fk-`），用于前端列表识别 |
+| `key_hash` | varchar(128) | sha256(明文) hex 字符串，**唯一索引**，明文永不落库 |
+| `status` | varchar(16) | `active` / `disabled` / `exhausted` / `expired` |
+| `expired_at` | time.Time | 过期时间；NULL = 永不过期 |
+| `balance_cap_cents` | int | 独立额度上限（cents）；0 = 用用户全局余额 |
+| `used_cents` | int | 已消耗额度（cents） |
+| `unlimited_balance` | bool | true 时 balance_cap_cents 字段被忽略 |
+| `model_limits` | varchar(512) | 模型白名单（逗号分隔）；空 = 不限 |
+| `allow_ips` | varchar(512) | IP 白名单（换行分隔，支持单 IP 和 CIDR）；空 = 不限 |
+| `last_used_ip` | string | 最近一次调用 IP |
+| `last_used_at` | time.Time | 最近一次调用时间 |
+| `created_at` | time.Time | 创建时间 |
+| `updated_at` | time.Time | 最近更新时间 |
+
+**鉴权分发顺序**（`middleware/admin.go::authUser`）：
+1. `Authorization: Bearer sk-fk-...` → `service.CurrentAuthUserByTokenFull`（同时校验 status / expired_at / allow_ips）
+2. Cookie `freedom_token=<jwt>` → `service.CurrentAuthUser`
+3. `Authorization: Bearer <jwt>` → `service.CurrentAuthUser`（兼容旧客户端）
+
+**关联字段**：`ai_call_logs.token_id` 在 Sprint 1.1 加入，外键概念上指向 `user_tokens.id`（无 DB 外键约束，便于跨表清理）。`balance_logs.extra` 的 JSON 也会带 `tokenId` 字段。

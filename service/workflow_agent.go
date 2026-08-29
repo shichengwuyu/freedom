@@ -61,7 +61,12 @@ func DraftCreativeWorkflow(ctx context.Context, request WorkflowAgentDraftReques
 		// 2026-08-17 改造：改走 WithHold 路径，提供幂等键 + 状态机正确性，让网络重试+退款失败
 		// 不再成为"凭空涨余额"风险。每条请求用 uuid 当 requestID（workflow agent 这里没有
 		// 外部 clientTaskId 概念，本端生成唯一 ID 即可）。
-		holdID, err = ConsumeUserBalanceWithHold(user.ID, modelName, cents, "/workflows/agent-draft", uuid.NewString())
+		// Sprint 1.1：可选 tokenID（Bearer sk- 鉴权时由 ctx 携带）
+		tokenID := ""
+		if t, ok := UserTokenFromContext(ctx); ok {
+			tokenID = t.ID
+		}
+		holdID, err = ConsumeUserBalanceWithHold(user.ID, modelName, cents, "/workflows/agent-draft", uuid.NewString(), tokenID)
 		if err != nil {
 			return WorkflowAgentDraftResponse{}, err
 		}
