@@ -17,6 +17,7 @@ const (
 
 // User 系统用户。
 // BalanceCents 账户余额，单位 = 分（cents，1 元 = 100 cents）。
+// GroupID 用户组 ID（Sprint 3 引入），关联 user_groups 表；空字符串 = default
 type User struct {
 	ID          string     `json:"id" gorm:"primaryKey"`
 	Username    string     `json:"username" gorm:"type:varchar(255);uniqueIndex"`
@@ -26,6 +27,7 @@ type User struct {
 	AvatarURL   string     `json:"avatarUrl"`
 	Role        UserRole   `json:"role"`
 	BalanceCents int        `json:"balanceCents"`
+	GroupID     string     `json:"groupId" gorm:"type:varchar(64);index"` // Sprint 3
 	AffCode     string     `json:"affCode" gorm:"uniqueIndex"`
 	AffCount    int        `json:"affCount"`
 	InviterID   string     `json:"inviterId"`
@@ -53,6 +55,7 @@ type AuthUser struct {
 	AvatarURL    string   `json:"avatarUrl"`
 	Role         UserRole `json:"role"`
 	BalanceCents int      `json:"balanceCents"`
+	GroupID      string   `json:"groupId"` // Sprint 3：前端拿到用于展示当前用户组
 	CreatedAt    string   `json:"createdAt"`
 	UpdatedAt    string   `json:"updatedAt"`
 }
@@ -71,6 +74,7 @@ func PublicUser(user User) AuthUser {
 		AvatarURL:    user.AvatarURL,
 		Role:         user.Role,
 		BalanceCents: user.BalanceCents,
+		GroupID:      user.GroupID,
 		CreatedAt:    user.CreatedAt,
 		UpdatedAt:    user.UpdatedAt,
 	}

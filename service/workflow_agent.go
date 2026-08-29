@@ -47,9 +47,16 @@ func DraftCreativeWorkflow(ctx context.Context, request WorkflowAgentDraftReques
 		modelCost = model.ModelCost{Model: modelName, Unit: model.ModelCostUnitPerCall}
 	}
 	// 工作流 agent 按文本模型处理：per_call 模式，单请求只扣 账户余额（忽略按秒配置）
-	cents := modelCost.CostCents
+	// Sprint 3：按 user.groupID 算 per-unit cost
+	groupID := ""
+	if user, ok := UserFromContext(ctx); ok {
+		groupID = user.GroupID
+	}
+	unitCents, _ := CalcUnitCostCents(modelName, groupID)
+	cents := unitCents
 	if modelCost.Unit == model.ModelCostUnitPerSecond && modelCost.CostCentsPerSecond > 0 {
-		cents = modelCost.CostCentsPerSecond
+		// per_second 模式保留原语义（与 CalcUnitCostCents 一致）
+		cents = unitCents
 	}
 	// 兜底：云端模式下 cents 必须 > 0；否则拒绝（防 0 元白嫖）。
 	if request.ChannelMode != "local" && cents <= 0 {

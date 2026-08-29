@@ -65,6 +65,7 @@ func EnsureDefaultAdmin() error {
 		Username:  adminUser,
 		Password:  hash,
 		Role:      model.UserRoleAdmin,
+		GroupID:   model.UserGroupDefault, // Sprint 3
 		AffCode:   newAffCode(),
 		Status:    model.UserStatusActive,
 		CreatedAt: now(),
@@ -111,6 +112,7 @@ func Register(username string, password string, inviterCode string) (model.AuthS
 		Username:  username,
 		Password:  hash,
 		Role:      model.UserRoleUser,
+		GroupID:   model.UserGroupDefault, // Sprint 3
 		AffCode:   newAffCode(),
 		InviterID: inviterID,
 		Status:    model.UserStatusActive,
@@ -344,6 +346,10 @@ func SaveUser(user model.User, password string) (model.User, error) {
 		user.ID = newID("user")
 		user.AffCode = newAffCode()
 		user.CreatedAt = now()
+		// Sprint 3：新建用户时若 admin 未指定 groupID，默认 default
+		if strings.TrimSpace(user.GroupID) == "" {
+			user.GroupID = model.UserGroupDefault
+		}
 	} else if saved, ok, err := repository.GetUserByID(user.ID); err != nil {
 		return user, err
 	} else if ok {

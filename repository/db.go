@@ -77,6 +77,8 @@ func DB() (*gorm.DB, error) {
 			&model.AffCommissionLog{},
 			// Sprint 1.1：用户自建 API Key（sk- token）
 			&model.UserToken{},
+			// Sprint 3：用户组（阶梯定价维度）
+			&model.UserGroup{},
 		)
 	})
 	return db, dbErr

@@ -31,6 +31,8 @@ func New() *gin.Engine {
 	api.GET("/auth/linux-do/callback", gin.WrapF(handler.LinuxDoCallback))
 	api.GET("/auth/me", middleware.OptionalAuth, gin.WrapF(handler.CurrentUser))
 	api.GET("/settings", gin.WrapF(handler.Settings))
+	// Sprint 3：公开定价 API（不需登录）
+	api.GET("/pricing", gin.WrapF(handler.GetPricing))
 	api.GET("/storage/config", gin.WrapF(handler.StorageConfig))
 	// ========== P0 新增：多供应商云端切换（公开接口）==========
 	// GET /api/vendors：列出所有启用供应商（脱敏，不含 ClientSecret），无需登录

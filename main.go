@@ -32,6 +32,10 @@ func main() {
 	if err := service.BuildAbilityCache(); err != nil {
 		log.Printf("build ability cache failed: %v", err)
 	}
+	// Sprint 3：seed 4 个内置 user group（default/plus/pro/enterprise）
+	if err := service.SeedDefaultUserGroups(); err != nil {
+		log.Printf("seed default user groups failed: %v", err)
+	}
 	service.StartCanvasProjectCleanupScheduler()
 	service.StartBalanceHoldSweepScheduler()
 	service.StartModelStatusScheduler()

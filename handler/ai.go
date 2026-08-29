@@ -164,14 +164,21 @@ func proxyAIRequest(w http.ResponseWriter, r *http.Request, path string) {
 		}
 		// 图片/文本等非视频模型：按 账户余额 乘以生成数量 count
 		// 视频模型（KIE/APIMart 视频路径也走 handler/video_task.go 不在这里）：默认 per_call
+		// Sprint 3：cents = (按 group 倍率算出的 per-unit) * count/seconds
+		unitCents, unitErr := service.CalcUnitCostCents(modelName, user.GroupID)
+		if unitErr != nil {
+			log.Printf("AI proxy calc unit cost failed: model=%s err=%v", modelName, unitErr)
+			FailWithStatus(w, http.StatusBadRequest, "该模型暂未配置价格，请联系管理员或换一个模型")
+			return
+		}
 		if modelCost.Unit == model.ModelCostUnitPerSecond && modelCost.CostCentsPerSecond > 0 {
 			seconds := readVideoSecondsFromBody(body, contentType)
 			if seconds <= 0 {
 				seconds = 1
 			}
-			cents = modelCost.CostCentsPerSecond * seconds * readAIRequestCount(body, contentType)
+			cents = unitCents * seconds * readAIRequestCount(body, contentType)
 		} else {
-			cents = modelCost.CostCents * readAIRequestCount(body, contentType)
+			cents = unitCents * readAIRequestCount(body, contentType)
 		}
 		// 兜底：配置存在但金额为 0（手工配了 0 元或自动价 0 元）也拒绝，
 		// 防止 admin 误配或上游定价 0 元导致免费用付费云端渠道。

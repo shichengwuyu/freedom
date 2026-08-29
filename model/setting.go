@@ -1,6 +1,9 @@
 package model
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"strings"
+)
 
 type SettingKey string
 
@@ -71,6 +74,26 @@ type ModelCost struct {
 	RefVideo           *bool  `json:"refVideo,omitempty"`           // 是否支持视频参考上传（仅视频模型有意义；nil=回退白名单推断）
 	RefAudio           *bool  `json:"refAudio,omitempty"`           // 是否支持音频参考上传（nil=回退白名单推断）
 	GenAudio           *bool  `json:"genAudio,omitempty"`           // 是否支持生成同步音频（nil=回退白名单推断）
+	// Sprint 3：per-model per-group 倍率覆盖
+	// 格式：{"plus": 0.5, "pro": 0.3}（0.5 = 5 折；空=不覆盖，走 groupRatio）
+	// 实际计费 = baseCents * groupRatio * modelGroupRatio，向下取整
+	GroupPricingJSON string `json:"groupPricingJson,omitempty" gorm:"type:text"`
+}
+
+// GetGroupPricingRatio 返回该 model 对指定 group 的倍率（0~1，空=1.0）。
+// JSON 解析失败时安全返回 1.0（不阻断计费）。
+func (m *ModelCost) GetGroupPricingRatio(groupID string) float64 {
+	if strings.TrimSpace(m.GroupPricingJSON) == "" || strings.TrimSpace(groupID) == "" {
+		return 1.0
+	}
+	var ratios map[string]float64
+	if err := json.Unmarshal([]byte(m.GroupPricingJSON), &ratios); err != nil {
+		return 1.0
+	}
+	if r, ok := ratios[groupID]; ok && r > 0 {
+		return r
+	}
+	return 1.0
 }
 
 // PublicModelChannelSetting 公开模型渠道配置。
@@ -161,12 +184,15 @@ type PublicLinuxDoAuthSetting struct {
 
 // PrivateSetting 私有配置。
 type PrivateSetting struct {
-	Channels   []ModelChannel        `json:"channels"`
-	PromptSync PromptSyncSetting     `json:"promptSync"`
-	AILog      AILogSetting          `json:"aiLog"`
-	Auth       PrivateAuthSetting    `json:"auth"`
-	Storage    PrivateStorageSetting `json:"storage"`
-	Affiliate  AffiliateSetting      `json:"affiliate"`
+	Channels    []ModelChannel        `json:"channels"`
+	PromptSync  PromptSyncSetting     `json:"promptSync"`
+	AILog       AILogSetting          `json:"aiLog"`
+	Auth        PrivateAuthSetting    `json:"auth"`
+	Storage     PrivateStorageSetting `json:"storage"`
+	Affiliate   AffiliateSetting      `json:"affiliate"`
+	// Sprint 3：group 维度统一倍率（key=groupID, value=倍率 0~1；缺省=1.0）
+	// 典型：{"default": 1.0, "plus": 0.8, "pro": 0.6, "enterprise": 0.4}
+	GroupRatios map[string]float64 `json:"groupRatios,omitempty"`
 }
 
 // AffiliateSetting 邀请返佣配置（仅官方托管版生效；自部署 fork 不结算）。
