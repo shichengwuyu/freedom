@@ -2,6 +2,22 @@
 
 ## Unreleased
 
++ [新增] novel-workflow v2：剧本→成片工作流（OpenSpec `add-novel-video-assembly`）
+
+  借鉴小云雀"多 Agent 协同 + 用户可见流水线"范式，把 novel 工作台后半段建模成 5 层 9 节点的工作流：
+
+  - **novel-storyboard-workflow**（编排底座）：9 节点图、7 态状态机、声明式依赖、自动/手动/快速/自定义双模式、worker 池
+  - **shot-dubbing-node**：按分镜调 TTS 模型生成 mp3，可插拔 provider（MiMo TTS 默认实现 + 接口预留火山/OpenAI/ElevenLabs），单分镜可试听/重新生成/调音色/调语速，扣费走 BalanceHold 流程（成功 Settle / 失败 Cancel 自动退款）
+  - **shot-subtitle-node**：按"对白/旁白"字数线性切分时间轴到视频时长，手动编辑器（改文字/拖起止/增删行），全局字幕样式（字体/字号/颜色/描边/位置）
+  - **bgm-layer**：6-8 个系统预设 BGM（古风/都市/紧张/温馨/伤感/史诗/欢快/悬疑，Docker 镜像 COPY）+ 用户自定义上传（20MB 限制，audio/mpeg|wav MIME 校验），可调音量/淡入/淡出
+  - **composition-layer**：ffmpeg 5 步流水线（归一化 → 拼接 → 混音 → 烧字幕 → 输出），用 `-progress pipe:1` 解析步骤进度，3 秒轮询，可停止/重试
+  - **export-layer**：mp4 下载 + 抖音/小红书/视频号三种平台文案生成 + 成片元数据展示（v2 不做分享链接/token 撤销）
+  - **novel-rerun-layer**（★ 核心 UX）：成片回看页（播放器+分镜列表+版本 tab）+ 单分镜单层重做（视频/配音/字幕）+ 整部成片单层重做（重烧字幕/重新合成/重新配音）+ 版本号管理（v1/v2/v3）+ 回滚
+  - **series-asset-lock**（漫剧一致性）：项目级主资产包（角色+场景+道具+全局色调 prompt），锁定后视频生成自动追加风格约束，资产选择器只显示主资产包内
+  - **运行时**：Docker 镜像安装 ffmpeg（含 libass）；新增 6 个环境变量（`FFMPEG_BINARY_PATH` / `COMPOSITION_OUTPUT_DIR` / `COMPOSITION_WORKER_COUNT` / `TTS_PROVIDER` / `ENABLE_SERIES_ASSET_LOCK` / `BGM_PRESETS_DIR`）；启动时 ffmpeg smoke check + BGM 预设加载 + 30 天过期成片清理 cron
+  - **新增数据表**：`novel_workflow_runs` / `novel_workflow_nodes` / `shot_dubbings` / `shot_subtitles` / `bgm_customs` / `composition_tasks` / `rerun_records` / `series_asset_locks`（共 8 张）
+  - **新增 HTTP API**：约 30 个 endpoint 在 `/api/v1/novel/*`（workflows / dubbing / subtitle / bgm / composition / export / rerun / series-asset-lock）
+
 + [重构] 移除"算力点"概念，整套支付系统改为直接按人民币元（¥）显示：底层存储单位从"积分"改为"分（cents，1 元 = 100 cents）"，`User.Credits → User.BalanceCents`、`CreditLog → BalanceLog`（type 枚举改为 `manual_adjust / generation_consume / generation_refund / manual_recharge`）、`ModelCost.Credits/PerSecondCredits → CostCents/CostCentsPerSecond`、`LicenseKey.Credits → FaceValueCents`。前端文案从"Credits"统一改为"余额 / ¥X.XX"，新增 / 移除兑卡前台入口，保留 admin 批量生成卡密作为"人工补发"通道，route 从 `/credits` 改 `/wallet`、admin 流水从 `/admin/credit-logs` 改 `/admin/balance-logs`
 + [新增] LibTV 视频供应商分发：`/api/v1/videos` 任务链路接入供应商分支（`VendorVideoSubmitter.SubmitVideo` 提交拿 generateUuid → `VideoTask` 增加 `vendor_type` 标记 → 轮询改调 `GetTaskStatus`），UpDream/NewWow 未实现视频提交时给出"暂不支持视频生成"提示
 + [修复] LibTV `GenerateVideo` 模型判定改为按模板 UUID / 名称含「文生视频/图生视频」优先，图生视频必须带首帧；`GetTaskStatus` 进度兼容 JSON float64（原 `.(int)` 断言导致进度恒为 0）；`GenerateImage` 补 prompt 空校验

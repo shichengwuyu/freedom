@@ -57,6 +57,8 @@ func main() {
 	handler.StartStoryboardTaskRunner()
 	// novel-workflow v2：启动工作流状态聚合 worker（5s 轮询）
 	service.StartNovelWorkflowWorker(context.Background())
+	// novel-workflow v2：跨切清理 cron（30 天过期成片 + rerun record）
+	service.StartNovelWorkflowCleanupScheduler()
 	// novel-workflow v2：加载 BGM 预设（manifest + mp3 校验）
 	if err := service.LoadBgmPresets(); err != nil {
 		log.Printf("load bgm presets failed: %v", err)
