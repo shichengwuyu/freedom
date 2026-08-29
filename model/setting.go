@@ -1,6 +1,9 @@
 package model
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"strings"
+)
 
 type SettingKey string
 
@@ -26,6 +29,27 @@ type ModelChannel struct {
 	Timeout     int               `json:"timeout"`
 	Enabled     bool              `json:"enabled"`
 	Remark      string            `json:"remark"`
+
+	// Sprint 2 新增：渠道选择器（多 key + 优先级 + 状态码 failover）
+	// 字段兼容：以下字段均为 omitempty，老配置 JSON 反序列化时全部为默认值，行为不变。
+	Priority          int      `json:"priority,omitempty"`           // 数字小=优先（默认 0，与 Weight 随机选择兼容）
+	StatusCodeMapping string   `json:"statusCodeMapping,omitempty"`  // "429,500,502,503,504" 命中即视为该渠道失败；空=默认 429/5xx
+	CooldownSeconds   int      `json:"cooldownSeconds,omitempty"`    // 失败后冷却秒数（默认 60s）
+	Keys              []string `json:"keys,omitempty"`              // 多 key 列表；空时回退到 APIKey（兼容老配置）
+	Group             string   `json:"group,omitempty"`             // 预留 Sprint 3（Sprint 2 不强校验；所有 enabled 都在 default group）
+	Capability        string   `json:"capability,omitempty"`        // "text"/"image"/"video"/"audio"；空=通用（匹配所有 capability 查询）
+	AutoBan           bool     `json:"autoBan,omitempty"`           // 失败后是否自动冷却（默认 true，false=不冷却）
+}
+
+// ChannelKeys 返回该渠道的完整 key 列表（兼容老配置：Keys 为空时返回 [APIKey]）。
+func (c *ModelChannel) ChannelKeys() []string {
+	if len(c.Keys) > 0 {
+		return c.Keys
+	}
+	if c.APIKey != "" {
+		return []string{c.APIKey}
+	}
+	return nil
 }
 
 // ModelCostUnit 扣费单位。
@@ -50,6 +74,26 @@ type ModelCost struct {
 	RefVideo           *bool  `json:"refVideo,omitempty"`           // 是否支持视频参考上传（仅视频模型有意义；nil=回退白名单推断）
 	RefAudio           *bool  `json:"refAudio,omitempty"`           // 是否支持音频参考上传（nil=回退白名单推断）
 	GenAudio           *bool  `json:"genAudio,omitempty"`           // 是否支持生成同步音频（nil=回退白名单推断）
+	// Sprint 3：per-model per-group 倍率覆盖
+	// 格式：{"plus": 0.5, "pro": 0.3}（0.5 = 5 折；空=不覆盖，走 groupRatio）
+	// 实际计费 = baseCents * groupRatio * modelGroupRatio，向下取整
+	GroupPricingJSON string `json:"groupPricingJson,omitempty" gorm:"type:text"`
+}
+
+// GetGroupPricingRatio 返回该 model 对指定 group 的倍率（0~1，空=1.0）。
+// JSON 解析失败时安全返回 1.0（不阻断计费）。
+func (m *ModelCost) GetGroupPricingRatio(groupID string) float64 {
+	if strings.TrimSpace(m.GroupPricingJSON) == "" || strings.TrimSpace(groupID) == "" {
+		return 1.0
+	}
+	var ratios map[string]float64
+	if err := json.Unmarshal([]byte(m.GroupPricingJSON), &ratios); err != nil {
+		return 1.0
+	}
+	if r, ok := ratios[groupID]; ok && r > 0 {
+		return r
+	}
+	return 1.0
 }
 
 // PublicModelChannelSetting 公开模型渠道配置。
@@ -87,6 +131,14 @@ type PublicModelChannelInfo struct {
 	Timeout     int               `json:"timeout"`
 	Enabled     bool              `json:"enabled"`
 	Remark      string            `json:"remark"`
+
+	// Sprint 2 新增：前端展示用
+	Priority          int      `json:"priority,omitempty"`
+	StatusCodeMapping string   `json:"statusCodeMapping,omitempty"`
+	CooldownSeconds   int      `json:"cooldownSeconds,omitempty"`
+	KeyCount          int      `json:"keyCount,omitempty"` // 多 key 数量（不返明文，仅数量）
+	Group             string   `json:"group,omitempty"`
+	Capability        string   `json:"capability,omitempty"`
 }
 
 // PublicSetting 公开配置。
@@ -132,12 +184,15 @@ type PublicLinuxDoAuthSetting struct {
 
 // PrivateSetting 私有配置。
 type PrivateSetting struct {
-	Channels   []ModelChannel        `json:"channels"`
-	PromptSync PromptSyncSetting     `json:"promptSync"`
-	AILog      AILogSetting          `json:"aiLog"`
-	Auth       PrivateAuthSetting    `json:"auth"`
-	Storage    PrivateStorageSetting `json:"storage"`
-	Affiliate  AffiliateSetting      `json:"affiliate"`
+	Channels    []ModelChannel        `json:"channels"`
+	PromptSync  PromptSyncSetting     `json:"promptSync"`
+	AILog       AILogSetting          `json:"aiLog"`
+	Auth        PrivateAuthSetting    `json:"auth"`
+	Storage     PrivateStorageSetting `json:"storage"`
+	Affiliate   AffiliateSetting      `json:"affiliate"`
+	// Sprint 3：group 维度统一倍率（key=groupID, value=倍率 0~1；缺省=1.0）
+	// 典型：{"default": 1.0, "plus": 0.8, "pro": 0.6, "enterprise": 0.4}
+	GroupRatios map[string]float64 `json:"groupRatios,omitempty"`
 }
 
 // AffiliateSetting 邀请返佣配置（仅官方托管版生效；自部署 fork 不结算）。

@@ -31,6 +31,8 @@ func New() *gin.Engine {
 	api.GET("/auth/linux-do/callback", gin.WrapF(handler.LinuxDoCallback))
 	api.GET("/auth/me", middleware.OptionalAuth, gin.WrapF(handler.CurrentUser))
 	api.GET("/settings", gin.WrapF(handler.Settings))
+	// Sprint 3：公开定价 API（不需登录）
+	api.GET("/pricing", gin.WrapF(handler.GetPricing))
 	api.GET("/storage/config", gin.WrapF(handler.StorageConfig))
 	// ========== P0 新增：多供应商云端切换（公开接口）==========
 	// GET /api/vendors：列出所有启用供应商（脱敏，不含 ClientSecret），无需登录
@@ -56,6 +58,14 @@ func New() *gin.Engine {
 	v1.POST("/responses", gin.WrapF(handler.AIResponses))
 	v1.POST("/chat/completions", gin.WrapF(handler.AIChatCompletions))
 	v1.POST("/audio/speech", gin.WrapF(handler.AIAudioSpeech))
+	// Sprint 1.1：用户自建 API Key（OpenAI 兼容 sk- 格式）CRUD
+	v1.POST("/user-tokens", gin.WrapF(handler.CreateUserTokenHandler))
+	v1.GET("/user-tokens", gin.WrapF(handler.ListUserTokensHandler))
+	v1.DELETE("/user-tokens/:id", func(c *gin.Context) {
+		handler.DeleteUserTokenHandler(c.Writer, c.Request)
+	})
+	v1.POST("/user-tokens/:id/disable", gin.WrapF(handler.SetUserTokenStatusHandler("disabled")))
+	v1.POST("/user-tokens/:id/enable", gin.WrapF(handler.SetUserTokenStatusHandler("active")))
 	v1.POST("/canvas/tasks/delete", gin.WrapF(handler.DeleteUserCanvasTasks))
 	v1.POST("/canvas/image-tasks", gin.WrapF(handler.CreateCanvasImageTask))
 	v1.GET("/canvas/image-tasks", gin.WrapF(handler.UserCanvasImageTasks))
@@ -177,6 +187,11 @@ func New() *gin.Engine {
 	admin.POST("/balance-logs", gin.WrapF(handler.AdminSaveBalanceLog))
 	admin.GET("/ai-logs/dates", gin.WrapF(handler.AdminAICallLogDates))
 	admin.GET("/ai-logs", gin.WrapF(handler.AdminAICallLogs))
+	// Sprint 2：渠道失败诊断（最近 100 条）
+	admin.GET("/channel-fail-logs", gin.WrapF(handler.AdminChannelFailLogs))
+	// Sprint 2.6：渠道健康度汇总（一次性返回 KPI + 渠道统计 + 最近失败）
+	admin.GET("/channels-health", gin.WrapF(handler.AdminChannelsHealth))
+	admin.POST("/channels-health/clear-cooldowns", gin.WrapF(handler.AdminClearCooldowns))
 	admin.DELETE("/ai-logs/by-dates", gin.WrapF(handler.AdminDeleteAICallLogsByDates))
 	admin.DELETE("/ai-logs", gin.WrapF(handler.AdminDeleteAICallLogs))
 	admin.GET("/settings", gin.WrapF(handler.AdminSettings))

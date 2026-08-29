@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"math/rand"
 	"net/http"
 	"net/url"
@@ -61,6 +62,12 @@ func SaveSettings(settings model.Settings) (model.Settings, error) {
 		RefreshPromptSyncScheduler()
 		RefreshStorageCapacityScheduler()
 		RefreshAILogCleanupScheduler()
+		// Sprint 2：admin 改 channels 后重建渠道选择器倒排索引（异步，不阻塞主流程）
+		go func() {
+			if berr := BuildAbilityCache(); berr != nil {
+				log.Printf("rebuild ability cache after SaveSettings failed: %v", berr)
+			}
+		}()
 	}
 	return hidePrivateAPIKeys(result), err
 }
@@ -315,7 +322,12 @@ func normalizePrivateSetting(setting model.PrivateSetting) model.PrivateSetting 
 
 func hidePrivateAPIKeys(settings model.Settings) model.Settings {
 	for i := range settings.Private.Channels {
+		// Sprint 2.5：单 key 字段 + Sprint 2 新加的多 key 切片都清空
+		// admin 调 GET /api/admin/settings 时看不到任何明文；要看完整 key
+		// 必须先经过 hidePrivateAPIKeys→saveAdminSettings 的"传回原值"流程
+		// （前端 mergeChannelApiKeys 沿用 saved 的 keys 字段）。
 		settings.Private.Channels[i].APIKey = ""
+		settings.Private.Channels[i].Keys = nil
 	}
 	for i := range settings.Private.Storage.Providers {
 		settings.Private.Storage.Providers[i].SecretAccessKey = ""
@@ -1082,6 +1094,13 @@ func publicChannelInfos(channels []model.ModelChannel) []model.PublicModelChanne
 			Timeout:     channel.Timeout,
 			Enabled:     channel.Enabled,
 			Remark:      channel.Remark,
+			// Sprint 2 新增字段透传
+			Priority:          channel.Priority,
+			StatusCodeMapping: channel.StatusCodeMapping,
+			CooldownSeconds:   channel.CooldownSeconds,
+			KeyCount:          len(channel.ChannelKeys()),
+			Group:             channel.Group,
+			Capability:        channel.Capability,
 		})
 	}
 	return result

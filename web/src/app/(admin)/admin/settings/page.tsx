@@ -3,7 +3,7 @@
 import { CheckCircleOutlined, DeleteOutlined, FormatPainterOutlined, LoadingOutlined, PlusOutlined, ReloadOutlined, SaveOutlined, SoundOutlined } from "@ant-design/icons";
 import { Image as ImageIcon, Video, MessageSquare, Music2, Bell, Headphones, Upload as UploadIcon } from "lucide-react";
 import { json } from "@codemirror/lang-json";
-import { App, Alert, Button, Card, Checkbox, Col, Drawer, Flex, Form, Input, InputNumber, Modal, Row, Segmented, Select, Space, Switch, Table, Tabs, Tag, Tooltip, Typography, Upload } from "antd";
+import { App, Alert, Button, Card, Checkbox, Col, Collapse, Drawer, Flex, Form, Input, InputNumber, Modal, Row, Segmented, Select, Space, Switch, Table, Tabs, Tag, Tooltip, Typography, Upload } from "antd";
 import type { UploadFile, UploadProps } from "antd";
 import dynamic from "next/dynamic";
 import Link from "next/link";
@@ -48,7 +48,26 @@ const emptySettings: AdminSettings = {
     },
     private: { channels: [], promptSync: { enabled: true, cron: "0 0 * * *" }, aiLog: { localDirectReportEnabled: false, cleanup: { enabled: false, retentionDays: 14, cron: "0 3 * * *" } }, auth: { linuxDo: { clientId: "", clientSecret: "" } }, storage: { mode: "local_indexeddb", allowUserProvider: false, allowUserGlobalProvider: true, providers: [], roundRobinCursor: 0, capacityCheck: { enabled: false, cron: "0 */6 * * *" }, capacityLimitBytes: 9 * 1024 * 1024 * 1024 }, affiliate: { enabled: false, baseRate: 0.05, stepRate: 0.01, maxRate: 0.1, minSettleCents: 1 } },
 };
-const emptyChannel: AdminModelChannel = { id: "", protocol: "openai", name: "", baseUrl: "", apiKey: "", models: [], modelLabels: undefined, weight: 1, timeout: 600, enabled: true, remark: "" };
+const emptyChannel: AdminModelChannel = {
+    id: "",
+    protocol: "openai",
+    name: "",
+    baseUrl: "",
+    apiKey: "",
+    models: [],
+    modelLabels: undefined,
+    weight: 1,
+    timeout: 600,
+    enabled: true,
+    remark: "",
+    // Sprint 2.5 新增字段默认值
+    priority: 0,
+    statusCodeMapping: "",
+    cooldownSeconds: 0,
+    keys: [],
+    group: "",
+    capability: "",
+};
 const emptyS3StorageProvider: AdminStorageProvider = { id: "", name: "", type: "s3", endpoint: "", region: "auto", bucket: "", accessKeyId: "", secretAccessKey: "", publicBaseUrl: "", pathPrefix: "canvas", username: "", password: "", weight: 1, enabled: true, ownerUserId: "", capacityBytes: 0, capacityCheckedAt: "", capacityExceeded: false };
 const emptyWebDAVStorageProvider: AdminStorageProvider = { ...emptyS3StorageProvider, name: "", type: "webdav", region: "" };
 const emptyLocalStorageProvider: AdminStorageProvider = { ...emptyS3StorageProvider, name: "本地文件存储", type: "local", endpoint: "data/uploads", region: "", bucket: "", accessKeyId: "", secretAccessKey: "", publicBaseUrl: "", pathPrefix: "", username: "", password: "", weight: 1, enabled: true, ownerUserId: "", capacityBytes: 0, capacityCheckedAt: "", capacityExceeded: false };
@@ -94,7 +113,24 @@ export default function AdminSettingsPage() {
     const wechatQrValue = Form.useWatch(["public", "contactSupport", "wechatQr"], form) || "";
     const qqGroupQrValue = Form.useWatch(["public", "contactSupport", "qqGroupQr"], form) || "";
     const channelModels = useMemo(() => collectChannelModels(channels), [channels]);
-    const channelTableData = useMemo(() => channels.map((channel, index) => ({ ...channel, _index: index, _rowKey: `${index}-${channel.name}-${channel.baseUrl}` })), [channels]);
+    const channelTableData = useMemo(
+        () =>
+            channels.map((channel, index) => {
+                // Sprint 2.5：私有 channel 没有 keyCount 字段（那是 PublicModelChannelInfo 的），
+                // 这里从 keys[] + apiKey 计算注入到列表渲染。
+                const keyCount =
+                    (Array.isArray(channel.keys) && channel.keys.length > 0
+                        ? channel.keys.length
+                        : 0) + (channel.apiKey ? 1 : 0);
+                return {
+                    ...channel,
+                    keyCount,
+                    _index: index,
+                    _rowKey: `${index}-${channel.name}-${channel.baseUrl}`,
+                };
+            }),
+        [channels],
+    );
     const activeMode = editorMode[activeTab];
     const activeJsonText = jsonText[activeTab];
     const jsonError = activeMode === "json" ? getJsonError(activeJsonText) : "";
@@ -1077,6 +1113,28 @@ export default function AdminSettingsPage() {
                                                 </Typography.Text>
                                             ),
                                         },
+                                        // Sprint 2.5 新增：优先级 + Keys 列
+                                        {
+                                            title: "优先级",
+                                            key: "priority",
+                                            width: 80,
+                                            render: (_, record) => {
+                                                const p = record.priority ?? 0;
+                                                if (p === 0) return <Tag>默认</Tag>;
+                                                if (p > 0) return <Tag color="blue">高优 {p}</Tag>;
+                                                return <Tag color="red">低优 {p}</Tag>;
+                                            },
+                                        },
+                                        {
+                                            title: "Keys",
+                                            key: "keyCount",
+                                            width: 64,
+                                            render: (_, record) => {
+                                                const n = record.keyCount ?? 0;
+                                                if (n <= 1) return <Typography.Text type="secondary">-</Typography.Text>;
+                                                return <Tag color="blue">{n}</Tag>;
+                                            },
+                                        },
                                         { title: "权重", dataIndex: "weight", width: 88 },
                                         { title: "超时", dataIndex: "timeout", width: 96, render: (value) => `${value || 600}s` },
                                         {
@@ -1195,6 +1253,108 @@ export default function AdminSettingsPage() {
                                 <Form.Item name="remark" label="备注">
                                     <Input.TextArea rows={3} />
                                 </Form.Item>
+                            </Col>
+                            {/* Sprint 2.5：高级选项折叠面板，默认收起；普通用户不打扰。 */}
+                            <Col span={24}>
+                                <Collapse
+                                    ghost
+                                    items={[
+                                        {
+                                            key: "advanced",
+                                            label: "高级选项（多 key、优先级、状态码 failover）",
+                                            children: (
+                                                <Row gutter={16}>
+                                                    <Col span={12}>
+                                                        <Form.Item
+                                                            name="priority"
+                                                            label="优先级"
+                                                            extra="数字小=优先；0=默认"
+                                                        >
+                                                            <InputNumber
+                                                                min={0}
+                                                                step={1}
+                                                                className="!w-full"
+                                                            />
+                                                        </Form.Item>
+                                                    </Col>
+                                                    <Col span={12}>
+                                                        <Form.Item
+                                                            name="cooldownSeconds"
+                                                            label="冷却秒数"
+                                                            extra="失败后冷却秒数，0=默认 60s"
+                                                        >
+                                                            <InputNumber
+                                                                min={0}
+                                                                step={10}
+                                                                className="!w-full"
+                                                            />
+                                                        </Form.Item>
+                                                    </Col>
+                                                    <Col span={12}>
+                                                        <Form.Item
+                                                            name="statusCodeMapping"
+                                                            label="状态码映射"
+                                                            extra="命中即视为该渠道失败，逗号分隔。例：429,500,502,503。空=默认 429/5xx"
+                                                        >
+                                                            <Input placeholder="429,500,502,503" />
+                                                        </Form.Item>
+                                                    </Col>
+                                                    <Col span={12}>
+                                                        <Form.Item
+                                                            name="capability"
+                                                            label="能力"
+                                                            extra="text/image/video/audio；空=通用"
+                                                        >
+                                                            <Select
+                                                                allowClear
+                                                                options={[
+                                                                    { label: "通用（默认）", value: "" },
+                                                                    { label: "文本 (text)", value: "text" },
+                                                                    { label: "图片 (image)", value: "image" },
+                                                                    { label: "视频 (video)", value: "video" },
+                                                                    { label: "音频 (audio)", value: "audio" },
+                                                                ]}
+                                                            />
+                                                        </Form.Item>
+                                                    </Col>
+                                                    <Col span={24}>
+                                                        <Form.Item
+                                                            name="group"
+                                                            label="用户组"
+                                                            extra="Sprint 3 启用；留空=所有用户组可见"
+                                                        >
+                                                            <Input placeholder="默认 default" />
+                                                        </Form.Item>
+                                                    </Col>
+                                                    <Col span={24}>
+                                                        <Form.Item
+                                                            name="keys"
+                                                            label="多 Key 轮询"
+                                                            extra="每行一个 key（按顺序轮询）；留空则使用上方 API Key"
+                                                            getValueFromEvent={(e) => {
+                                                                const text = (e?.target?.value ?? "") as string;
+                                                                return text
+                                                                    .split(/\r?\n/)
+                                                                    .map((s) => s.trim())
+                                                                    .filter(Boolean);
+                                                            }}
+                                                            getValueProps={(value) => ({
+                                                                value: Array.isArray(value)
+                                                                    ? value.join("\n")
+                                                                    : value,
+                                                            })}
+                                                        >
+                                                            <Input.TextArea
+                                                                rows={4}
+                                                                placeholder={"sk-key-1\nsk-key-2\nsk-key-3"}
+                                                            />
+                                                        </Form.Item>
+                                                    </Col>
+                                                </Row>
+                                            ),
+                                        },
+                                    ]}
+                                />
                             </Col>
                         </Row>
                     </Form>
@@ -1517,14 +1677,31 @@ function normalizeChannel(item: Partial<AdminModelChannel> = {}): AdminModelChan
         timeout: Math.max(1, Number(item.timeout) || 600),
         enabled: item.enabled !== false,
         remark: item.remark || "",
+        // Sprint 2.5 新增字段归一化
+        priority: Number(item.priority) || 0,
+        statusCodeMapping: item.statusCodeMapping || "",
+        cooldownSeconds: Number(item.cooldownSeconds) || 0,
+        keys: Array.isArray(item.keys) ? item.keys : [],
+        group: item.group || "",
+        capability: (item.capability as AdminModelChannel["capability"]) || "",
     };
 }
 
 function mergeChannelApiKeys(currentChannels: AdminModelChannel[], saved: AdminSettings): AdminSettings {
-    const channels = saved.private.channels.map((item, index) => ({
-        ...item,
-        apiKey: currentChannels[index]?.apiKey || item.apiKey,
-    }));
+    const channels = saved.private.channels.map((item, index) => {
+        const current = currentChannels[index];
+        return {
+            ...item,
+            apiKey: current?.apiKey || item.apiKey,
+            // Sprint 2.5 新增：原逻辑只回填 apiKey；多 key 模式同样需要沿用 saved
+            keys: current?.keys && current.keys.length > 0 ? current.keys : item.keys,
+            priority: current?.priority ?? item.priority,
+            statusCodeMapping: current?.statusCodeMapping ?? item.statusCodeMapping,
+            cooldownSeconds: current?.cooldownSeconds ?? item.cooldownSeconds,
+            group: current?.group ?? item.group,
+            capability: current?.capability ?? item.capability,
+        };
+    });
     return {
         public: saved.public,
         private: { ...saved.private, channels },

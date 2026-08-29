@@ -49,12 +49,17 @@ type AICallLogInput struct {
 	Model           string `json:"model"`
 	ChannelID       string `json:"channelId"`
 	ChannelName     string `json:"channelName"`
+	TokenID         string `json:"tokenId"` // Sprint 1.1：Bearer sk- 鉴权时记录 user_token.id
 	Status          int    `json:"status"`
 	DurationMs      int64  `json:"durationMs"`
 	CostCents int `json:"costCents"`
 	RequestBody     string `json:"requestBody"`
 	ResponseBody    string `json:"responseBody"`
 	Error           string `json:"error"`
+	// Sprint 2 新增
+	AttemptIndex       int    `json:"attemptIndex"`
+	UpstreamStatusCode int    `json:"upstreamStatusCode"`
+	KeyIndex           int    `json:"keyIndex"`
 }
 
 func SaveAICallLog(input AICallLogInput) {
@@ -69,12 +74,17 @@ func SaveAICallLog(input AICallLogInput) {
 		Model:           strings.TrimSpace(input.Model),
 		ChannelID:       strings.TrimSpace(input.ChannelID),
 		ChannelName:     strings.TrimSpace(input.ChannelName),
+		TokenID:         strings.TrimSpace(input.TokenID),
 		Status:          input.Status,
 		DurationMs:      input.DurationMs,
 		CostCents:         input.CostCents,
 		RequestBody:     truncateLogText(input.RequestBody, aiLogRequestTextLimit),
 		ResponseBody:    responseBody,
 		Error:           truncateLogText(errorText, aiLogErrorTextLimit),
+		AttemptIndex:       input.AttemptIndex,
+		UpstreamStatusCode: input.UpstreamStatusCode,
+		KeyIndex:           input.KeyIndex,
+		LastTryAt:          now(),
 		CreatedAt:       now(),
 	}
 	if err := appendAICallLog(item); err != nil {

@@ -75,6 +75,10 @@ func DB() (*gorm.DB, error) {
 			&model.VendorApiSample{},
 			// 邀请返佣流水（一级直推）
 			&model.AffCommissionLog{},
+			// Sprint 1.1：用户自建 API Key（sk- token）
+			&model.UserToken{},
+			// Sprint 3：用户组（阶梯定价维度）
+			&model.UserGroup{},
 		)
 	})
 	return db, dbErr

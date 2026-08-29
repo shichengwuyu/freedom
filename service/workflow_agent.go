@@ -47,9 +47,16 @@ func DraftCreativeWorkflow(ctx context.Context, request WorkflowAgentDraftReques
 		modelCost = model.ModelCost{Model: modelName, Unit: model.ModelCostUnitPerCall}
 	}
 	// 工作流 agent 按文本模型处理：per_call 模式，单请求只扣 账户余额（忽略按秒配置）
-	cents := modelCost.CostCents
+	// Sprint 3：按 user.groupID 算 per-unit cost
+	groupID := ""
+	if user, ok := UserFromContext(ctx); ok {
+		groupID = user.GroupID
+	}
+	unitCents, _ := CalcUnitCostCents(modelName, groupID)
+	cents := unitCents
 	if modelCost.Unit == model.ModelCostUnitPerSecond && modelCost.CostCentsPerSecond > 0 {
-		cents = modelCost.CostCentsPerSecond
+		// per_second 模式保留原语义（与 CalcUnitCostCents 一致）
+		cents = unitCents
 	}
 	// 兜底：云端模式下 cents 必须 > 0；否则拒绝（防 0 元白嫖）。
 	if request.ChannelMode != "local" && cents <= 0 {
@@ -61,7 +68,12 @@ func DraftCreativeWorkflow(ctx context.Context, request WorkflowAgentDraftReques
 		// 2026-08-17 改造：改走 WithHold 路径，提供幂等键 + 状态机正确性，让网络重试+退款失败
 		// 不再成为"凭空涨余额"风险。每条请求用 uuid 当 requestID（workflow agent 这里没有
 		// 外部 clientTaskId 概念，本端生成唯一 ID 即可）。
-		holdID, err = ConsumeUserBalanceWithHold(user.ID, modelName, cents, "/workflows/agent-draft", uuid.NewString())
+		// Sprint 1.1：可选 tokenID（Bearer sk- 鉴权时由 ctx 携带）
+		tokenID := ""
+		if t, ok := UserTokenFromContext(ctx); ok {
+			tokenID = t.ID
+		}
+		holdID, err = ConsumeUserBalanceWithHold(user.ID, modelName, cents, "/workflows/agent-draft", uuid.NewString(), tokenID)
 		if err != nil {
 			return WorkflowAgentDraftResponse{}, err
 		}

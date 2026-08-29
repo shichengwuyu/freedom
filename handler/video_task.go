@@ -92,18 +92,25 @@ func proxyAIVideoTaskRequest(w http.ResponseWriter, r *http.Request) {
 			FailWithStatus(w, http.StatusBadRequest, "该模型暂未配置价格，请联系管理员或换一个模型")
 			return
 		}
+		// Sprint 3：按 group 倍率算 per-unit cost
+		unitCents, unitErr := service.CalcUnitCostCents(modelName, user.GroupID)
+		if unitErr != nil {
+			log.Printf("AI video calc unit cost failed: model=%s err=%v", modelName, unitErr)
+			FailWithStatus(w, http.StatusBadRequest, "该模型暂未配置价格，请联系管理员或换一个模型")
+			return
+		}
 		count := readAIRequestCount(body, contentType)
 		// 视频模型扣费两种模式：
-		//   - per_second（按秒）：CostCentsPerSecond * 视频秒数 * 生成个数
-		//   - per_call  （按次）：账户余额 * 生成个数（默认）
+		//   - per_second（按秒）：perSecond * 视频秒数 * 生成个数
+		//   - per_call  （按次）：perUnit  * 生成个数（默认）
 		if modelCost.Unit == model.ModelCostUnitPerSecond && modelCost.CostCentsPerSecond > 0 {
 			seconds := readVideoSecondsFromBody(body, contentType)
 			if seconds <= 0 {
 				seconds = 1
 			}
-			cents = modelCost.CostCentsPerSecond * seconds * count
+			cents = unitCents * seconds * count
 		} else {
-			cents = modelCost.CostCents * count
+			cents = unitCents * count
 		}
 		// 兜底：配置存在但金额为 0 也拒绝（防 admin 误配 0 元）。
 		if cents <= 0 {
@@ -142,7 +149,7 @@ func proxyAIVideoTaskRequest(w http.ResponseWriter, r *http.Request) {
 	}
 	holdID := ""
 	if cents > 0 {
-		holdID, err = service.ConsumeUserBalanceWithHold(user.ID, modelName, cents, upstreamPath, readClientVideoTaskIDOrRequestID(r))
+		holdID, err = service.ConsumeUserBalanceWithHold(user.ID, modelName, cents, upstreamPath, readClientVideoTaskIDOrRequestID(r), tokenIDFromContext(r.Context()))
 		if err != nil {
 			FailError(w, err)
 			return

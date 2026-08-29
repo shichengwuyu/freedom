@@ -5,6 +5,317 @@ description: 当前版本已实现但仍需人工验证的变更项
 
 # 待测试
 
+## Sprint 2.6：admin 渠道健康度页面
+
+把 Sprint 2 渠道失败诊断 ring buffer 可视化为 admin 看板。
+
+### 改动一览
+- **后端**：`service/channel_selector.go::LoadAllCooldownsSnapshot`；`handler/admin_channels_health.go` 新增（汇总 + 清空冷却）；路由 `GET /api/admin/channels-health` + `POST /api/admin/channels-health/clear-cooldowns`
+- **前端**：`admin.ts` 加 4 个 TS 类型 + 2 个 API client；`layout.tsx` 菜单加 "渠道健康"；`channels-health/page.tsx` 新建
+
+### 需人工验证
+
+1. **页面可访问**：admin 登录 → 左侧菜单看到「渠道健康」→ 点击 → 页面加载
+2. **空状态**：刚启动没有失败记录 → 4 个 KPI 全部 0 → 渠道表 / 最近失败表均显示 "暂无失败记录"
+3. **触发失败**：
+   - 配一个 channel mock 返 429（Sprint 2 验证已就绪）
+   - 调 3 次
+   - 页面看到：
+     - KPI：失败总数=3，失败渠道数=1，最长冷却=60
+     - 渠道表：1 行，failureCount=3，isInCooldown=true，cooldownRemaining=60
+     - 最近失败：3 行，channelName=mock，model=xxx，statusCode=429
+4. **冷却倒计时**：mock 429 后等 10s → 点 [刷新] → cooldownRemaining=50
+5. **冷却过期**：等 60s → 刷新 → isInCooldown=false，cooldownRemaining=0
+6. **清空冷却**：
+   - 再触发 1 次失败 → 看到冷却 60s
+   - 点 [清空冷却] → 弹 Popconfirm → 确认 → toast "已清空 1 个" → 页面刷新 → isInCooldown=false
+7. **多 channel 排序**：mock 2 个 channel 各 3 / 5 次失败 → 渠道表按 failureCount 倒序（5 在前）
+8. **AffectedModels**：同 channel 调 3 个不同模型 → 渠道表 `affectedModels: ["m1","m2","m3"]`
+9. **进程重启清空**：服务重启 → 刷新页面 → 全部为 0（ring buffer 行为）
+10. **手动刷新**：点 [刷新] 按钮 → loading 状态可见 → 重新加载
+11. **权限**：非 admin 访问 `/admin/channels-health` → 跳登录页（沿用现有 layout 鉴权）
+12. **回归**：Sprint 1.1 token 鉴权、Sprint 1.5 API Key UI、Sprint 2 渠道选择器、Sprint 2.5 admin 渠道配置全部不变
+
+## Sprint 2.5：admin 渠道管理 UI 升级
+
+把 Sprint 2 的能力（多 key / 优先级 / 状态码 failover / cooldown）暴露给 admin 抽屉表单 + 修复多 key 明文泄露漏洞。
+
+### 改动一览
+- **后端**：`service/settings.go::hidePrivateAPIKeys` 同步清空 `Keys []string`（**安全修复**）
+- **前端 type**：`AdminModelChannel` + `AdminPublicModelChannelInfo` 加 6 个新字段
+- **抽屉 Drawer**：插入「高级选项」`Collapse`（默认折叠）+ 多 Key 轮询 Textarea
+- **列表 Table**：新增「优先级」列 +「Keys」列
+- **数据兼容**：`normalizeChannel` / `mergeChannelApiKeys` 扩展
+
+### 需人工验证
+
+1. **安全漏洞修复（最优先）**：
+   - admin 调 `GET /api/admin/settings`（浏览器开 DevTools Network 面板看响应体）
+   - channels 数组里 `keys` 字段为 `null`（不是明文！）
+   - **改前是泄露的**，改后看不到完整 key
+
+2. **基础兼容（向后兼容老用户）**：
+   - 现有只配 `apiKey` 的渠道 → 编辑 Drawer 打开 → 「多 Key 轮询」文本框**为空**（不是后端默认填的 `[apiKey]`）→ 取消不改 → 保存 → 后端自动把单 `apiKey` 转为 `keys: [apiKey]`
+   - 验证方法：再次编辑同一渠道，「多 Key 轮询」里能看到 1 个 key（自动迁移）
+
+3. **新增多 key 渠道**：
+   - admin 新增渠道 → 填 name / baseUrl / 「多 Key 轮询」填 3 行（如 `k1\nk2\nk3`）→ 提交
+   - `POST /api/admin/settings` 看到 `keys: ["k1","k2","k3"]`、`apiKey: ""`（后端优先用 keys）
+   - 调一次模型 → ai_log `keyIndex: 0`，再调 `keyIndex: 1`
+
+4. **Priority 优先级**：
+   - admin 把 channel A `priority: 0`、channel B `priority: 5`
+   - 调 10 次 → ai_log 应该**全部在 A**（除非 A 失败）
+   - 列表里 A 显示「默认」、B 显示「高优 5」
+
+5. **StatusCodeMapping**：
+   - admin 把 channel A `statusCodeMapping: "429,403"`
+   - mock 返 429 → 切下一家
+   - mock 返 400 → **不切**（400 不在映射里）
+
+6. **cooldownSeconds**：
+   - admin 把 channel A `cooldownSeconds: 30`
+   - mock 429 → 30s 内被跳过
+
+7. **Capability 能力**：
+   - admin 把 channel A `capability: "image"`
+   - 调图片生成 → 走 A
+   - 调文本 → 走其他 channel（能力不匹配）
+
+8. **Group 字段**：
+   - 填「用户组」`vip` → 保存 → 下次调用（**Sprint 3 启用筛选前**）所有用户都能用（不报错）
+   - Sprint 3 引入 UserGroup 后这里会变成灰度筛选字段
+
+9. **列表展示**：
+   - admin 渠道列表看到「优先级」列（Tag 着色）+「Keys」列
+   - 多 key 渠道 Keys 列显示蓝色 Tag `3`
+   - 单 key 渠道 Keys 列显示 `-`
+
+10. **折叠面板**：
+    - 默认折叠，点「高级选项」展开看到所有新字段
+
+11. **保存校验**：
+    - 空 `keys` + 空 `apiKey` 仍允许（admin 可能配本地 channel）
+    - `priority: 0` 接受（默认优先级）
+
+12. **回归**：
+    - Sprint 1.1 token 鉴权不变
+    - Sprint 1.5 API Key UI 行为不变
+    - Sprint 2 多 key 轮询 + 状态码 failover 行为不变
+    - admin 设置的非渠道部分（prompt 同步、license 等）未改动
+
+## Sprint 2：渠道选择器端到端验证
+
+P0 报告（[Script-to-Video Vendor Mismatch]）的根治：上游失败时**自动切下一家**。
+
+### 后端改动一览
+- `model/setting.go` `ModelChannel` 加 `Priority` / `StatusCodeMapping` / `CooldownSeconds` / `Keys` / `Group` / `Capability`；`PublicModelChannelInfo` 同步加 `Priority` / `KeyCount` / 等
+- `model/ability.go` 新增：能力倒排索引 + `GetAbilitiesByKey` / `SetAbilityMap` / `ClearAbilityCache`
+- `model/ai_log.go` `AICallLog` 加 `AttemptIndex` / `UpstreamStatusCode` / `KeyIndex` / `LastTryAt`
+- `service/ability_cache` 在 `main.go` 启动期 + `SaveSettings` 后异步重建
+- `service/channel_selector.go` 新增：`PickChannelWithRetry` / `MarkChannelFail` / `BuildAbilityCache` / `cooldownMap` / `shouldTriggerCooldown`
+- `service/channel_fail_log.go` 新增：内存 ring buffer + `RecordChannelFailWithContext` / `ListChannelFailLogs`
+- `service/settings.go` `SaveSettings` 调 `BuildAbilityCache`（异步）+ `publicChannelInfos` 透传新字段
+- `service/ai_log.go` `AICallLogInput` 加同名字段 + 写入
+- `handler/ai.go` 拆 `proxyAIRequest` → `runLocalChannelSingle`（本地渠道） + `runRemoteChannelWithRetry`（云端 retry loop）+ `capabilityOf` / `normalizeRemoteImageBody` / `doProbeRequest` / `writeProbeResponse`
+- `handler/admin_channel_fail_log.go` 新增：失败日志接口
+- `router/router.go` 加 `GET /api/admin/channel-fail-logs`
+
+### 需人工验证
+
+**启动期 abilities 构建**：
+- `go run .` 启动后看日志 `[ability] built N abilities from M channels`（Sprint 2 启动 log 由 BuildAbilityCache 内部 print）
+
+**多 key 轮询**：
+- admin 在 `settings.private.channels` 把 channel A 的 `keys` 字段改为 `["key1","key2","key3"]`（JSON 数组）
+- 调一次 → ai_log `keyIndex: 0`
+- 再调一次 → ai_log `keyIndex: 1`
+- 再调一次 → ai_log `keyIndex: 2`
+- 再调一次 → ai_log `keyIndex: 0`（轮询）
+
+**优先级 + 权重**：
+- channel A `priority: 0, weight: 1`
+- channel B `priority: 10, weight: 100`
+- 调 10 次 → ai_log 应该**全部在 A**（除非 A 失败）；同 priority 内按 weight 随机
+
+**状态码 failover**：
+- mock 一个 channel 固定返 429
+- 调一次 → 第一次 ai_log 显示 status=429（attempt 0），自动切下一家 channel；最终返回成功响应
+- admin 看 `GET /api/admin/channel-fail-logs` 应能看到 mock channel 的失败记录
+
+**cooldown 熔断**：
+- mock 429 后立即再调 → mock channel 在 60s 冷却内被跳过，**直接走下一家**
+- 60s 后再调 → mock channel 重新可被选
+
+**StatusCodeMapping 自定义**：
+- mock channel 配 `statusCodeMapping: "403,404"`
+- mock 返 403 → 切下一家
+- mock 返 400 → **不切**（400 不在映射里），直接报错给用户
+
+**admin 改 channels 后缓存失效**：
+- admin `POST /api/admin/settings` 改一个 channel 的 weight
+- 下次请求立即按新 weight 走（无需重启服务）
+
+**vendor 路径不受影响**：
+- UpDream 用户用 sk-token 调 `/v1/images/generations` → 仍走 `dispatchVendorProxy`，**不**走新 selector
+- vendor 失败 fallback 仍走 `SelectModelChannelForModel`（老路径，本 Sprint 保留）
+
+**ai_log 新字段**：
+- admin `/admin/ai-logs` 看 `attemptIndex / upstreamStatusCode / keyIndex / lastTryAt` 字段全部填充
+
+**cooldown 持久化（手动验证）**：
+- 触发一个 channel 失败 → `service/cooldownMap[channelID] = now+60s`
+- 重启服务 → cooldown 清零（符合"重启=恢复"预期）
+
+### 回归（确保没破坏）
+- 现有 `curl -H "Authorization: Bearer sk-fk-..." /v1/chat/completions` 正常
+- 现有 cookie 登录 + 画布 + 工作台 全部不变
+- 现有 LinuxDo OAuth 登录不变
+- Sprint 1.5 API Key UI 行为不变
+- 现有本地渠道（userChannelID != ""）单次请求行为不变
+- UpDream / LibTV / NewWow vendor 路径完全不变
+
+## Sprint 1.5：API Key 管理前端页面端到端验证
+
+Sprint 1.1 后端的 user_token 能力在 `/wallet` 加了第 4 个 tab「API Key」。
+
+### 前端改动一览
+- `web/src/services/api/user_token.ts` 新增：5 个 API client
+- `web/src/app/(user)/wallet/components/api-key-manager.tsx` 新增：主组件
+- `web/src/app/(user)/wallet/components/api-key-create-modal.tsx` 新增：创建表单
+- `web/src/app/(user)/wallet/components/api-key-reveal-modal.tsx` 新增：**关键**明文展示弹窗
+- `web/src/app/(user)/wallet/page.tsx` 修改：Tabs.items 末尾追加第 4 个 tab
+
+### 需人工验证
+
+1. **登录后进 `/wallet`** → 默认显示"余额流水"tab → 切到第 4 个"API Key"tab → 看到空状态"还没有 API Key，点击创建"。
+2. **点 [+ 创建 API Key]** → 弹创建表单 → 填 name=「test-1」→ 点创建 → 表单弹窗关闭 + 弹出"⚠️ 请立即保存" 弹窗，**显示完整明文 `sk-fk-...`**。
+3. **点 [📋 复制 Key]** → toast "已复制 Key，请妥善保存" → 粘贴到任意地方能拿到完整 key。
+4. **关闭按钮 disabled** → 「我已保存」未勾选时点关闭按钮无效 → 勾选后关闭按钮启用 → 点关闭弹窗。
+5. **关后无法再看** → 再点 [+ 创建 API Key] 是新流程，**旧 key 永远只能看到 `sk-fk-...1234` 脱敏**。
+6. **列表显示**：`keyPrefix` 脱敏为 `sk-fk-...xxxx`；状态 Tag 绿色 active；用量显示 `¥0.00（用账户余额）`；最后使用 = "从未使用"；操作列有「禁用」「删除」。
+7. **拿 key 跑 curl**（按 Sprint 1.1 pending-test 已就绪）：
+   ```bash
+   curl -H "Authorization: Bearer sk-fk-..." http://localhost:3000/v1/chat/completions \
+     -H 'Content-Type: application/json' \
+     -d '{"model":"gpt-4o-mini","messages":[{"role":"user","content":"hi"}]}'
+   ```
+   → 正常响应。
+8. **回列表看** → `lastUsedAt` 刷新到刚刚，`lastUsedIp` 填上，`usedCents` 数字更新。
+9. **点 [禁用]** → Popconfirm 二次确认 "禁用后该 Key 立即失效" → 状态变 `disabled`、Tag 灰色 → 拿该 key 再 curl → 401。
+10. **点 [启用]** → 状态恢复 `active` → curl 恢复。
+11. **点 [删除]** → Popconfirm 二次确认 danger 红色 → 该行消失 → curl → 401。
+12. **高级选项**：创一个 `expiredAt = 2024-01-01` 的 → 列表显示 → 调 → 401（Status 自动转 `expired`，按钮变禁用）。
+13. **高级选项**：创一个 `balanceCapCents = 100`（1 元）的 → 调一次扣几分 → 列表 `usedCents` 显示对应值，"额度用量"列显示 `¥0.04 / ¥1.00`。
+14. **未登录访问 `/wallet` API Key tab**：跳登录页（沿用现有 wallet 鉴权逻辑，不变）。
+
+**回归**（确保没破坏现有 3 个 tab）：余额流水 / 卡密兑换 / 邀请 tab 显示和行为完全不变。
+
+## Sprint 1.1：用户自建 API Key（sk- token）端到端验证
+
+新增 `user_tokens` 表与 `Authorization: Bearer sk-fk-...` 鉴权路径，让外部 SDK 直接对接 Freedom。
+
+### 后端改动一览
+- `model/user_token.go` 新增 `UserToken` struct + 4 个状态常量
+- `model/ai_log.go` `AICallLog` 加 `TokenID string` indexed 字段
+- `repository/user_token.go` 7 个 CRUD（Save / GetByID / GetByHash / ListByUser / Delete / UpdateStatus / UpdateLastUsed / IncrementUsedCents）
+- `repository/db.go` AutoMigrate 追加 `&model.UserToken{}`
+- `service/user_token.go` CreateUserToken / ListUserTokens / DeleteUserToken / SetUserTokenStatus / CurrentAuthUserByTokenFull + `hashToken` `randomURLSafe` `ipAllowed` helpers
+- `service/context.go` 加 `WithUserToken` / `UserTokenFromContext`
+- `service/auth.go::ConsumeUserBalanceWithHold` 末尾加 `tokenID ...string` 可变参数
+- `service/ai_log.go` `AICallLogInput` 加 `TokenID` 字段
+- `service/workflow_agent.go` 调 `ConsumeUserBalanceWithHold` 时把 ctx 里的 token id 透传
+- `middleware/admin.go::authUser` 加 `Bearer sk-` 前置分支
+- `handler/ai.go` 所有 `ConsumeUserBalanceWithHold` 调用点传 `tokenIDFromContext(r.Context())`；`aiLogContext` + `saveAIProxyLog` 写入 `TokenID`；新加 `tokenIDFromContext` helper
+- `handler/video_task.go` 同上
+- `handler/user_token.go` 4 个 HTTP handler（Create / List / Delete / SetStatus）
+- `router/router.go` 5 个 `/api/v1/user-tokens` 路由
+
+### 需人工验证
+
+**建表**：
+- `go run .` 启动后看 MySQL 是否自动建出 `user_tokens` 表（列名 / 索引 / 类型对照 `docs/backend/backend-database.md` §user_tokens）。
+- `ai_call_logs` 是否自动加 `token_id` 列（已有 indexed）。
+
+**创建 token（明文一次性返回）**：
+```bash
+curl -c cookie.txt -X POST http://localhost:3000/api/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"username":"<你的账号>","password":"<密码>"}'
+curl -b cookie.txt -X POST http://localhost:3000/api/v1/user-tokens \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"my-curl-token"}'
+# 响应里 data.raw = "sk-fk-..."（仅此一次，刷新页面后无法再看到完整 key）
+# data.token.keyPrefix = "sk-fk-xxx..."（脱敏后）
+# data.token.keyHash 永远不返回
+```
+
+**Bearer 鉴权调 chat（无 cookie）**：
+```bash
+curl -X POST http://localhost:3000/v1/chat/completions \
+  -H "Authorization: Bearer sk-fk-..." \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"gpt-4o-mini","messages":[{"role":"user","content":"hi"}]}'
+# → 走 OpenAI 格式响应，扣用户余额
+```
+
+**Bearer 鉴权调生图**：
+```bash
+curl -X POST http://localhost:3000/v1/images/generations \
+  -H "Authorization: Bearer sk-fk-..." \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"gpt-image-1","prompt":"a cat","n":1}'
+# → 走 OpenAI 格式响应，扣用户余额
+```
+
+**错误 token 401**：
+```bash
+curl -H "Authorization: Bearer sk-fk-FAKE-FAKE" http://localhost:3000/v1/chat/completions -d '{}' -H 'Content-Type: application/json'
+# → 401
+```
+
+**过期 token 自动失效**：
+```bash
+# 建一个 expiredAt = "2024-01-01" 的 token
+curl -b cookie.txt -X POST http://localhost:3000/api/v1/user-tokens \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"expired-test","expiredAt":"2024-01-01T00:00:00Z"}'
+# → 401；查 user_tokens 表确认 status = "expired"
+```
+
+**IP 白名单拒绝**：
+```bash
+curl -b cookie.txt -X POST http://localhost:3000/api/v1/user-tokens \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"ip-restricted","allowIps":["127.0.0.1"]}'
+# 用该 token 从其他 IP 调 → 403 "IP 不在允许列表"
+```
+
+**列表 + 删除**：
+```bash
+curl -b cookie.txt http://localhost:3000/api/v1/user-tokens
+# → items[*].keyHash 全空，keyPrefix 已脱敏为 "sk-fk-...1234"
+curl -b cookie.txt -X DELETE http://localhost:3000/api/v1/user-tokens/<id>
+# → 删除后该 token 立即 401
+```
+
+**禁用 / 启用**：
+```bash
+curl -b cookie.txt -X POST http://localhost:3000/api/v1/user-tokens/<id>/disable
+curl -b cookie.txt -X POST http://localhost:3000/api/v1/user-tokens/<id>/enable
+# 期间用该 token 调 → 401
+```
+
+**ai_log 关联**：
+- admin 后台看 `/admin/ai-logs`，sk-token 鉴权的最新一条记录 `tokenId` 字段应有值；cookie 鉴权的为 `null`。
+- 查 `balance_logs.extra`（MySQL JSON 字段），应能看到 `"tokenId":"utok-..."`。
+
+**回归（确保没破坏）**：
+- 现有 `curl -b cookie.txt http://localhost:3000/api/v1/canvas/projects` 行为不变。
+- 现有画布/工作台前端无任何改动，所有路由仍能正常使用。
+- 现有 LinuxDo OAuth 登录流程不变。
+- UpDream / LibTV / NewWow 视频 vendor 走 `vendor_proxy.go` 不受 token 影响（token 仅做"是谁"识别）。
+
 ## 远程媒体下载 / 上传 415 修复（新增 proxy-media 媒体代理）
 
 用户反馈「上传和下载都显示媒体下载失败415」。根因：`downloadRemoteMedia`（下载远程媒体；上传远程媒体 URL 也复用它）把**所有**媒体 URL 走后端 `/api/proxy-image` 图片代理，而该代理只放行 `image/*`，`video/mp4` 等一律返回 415「仅支持图片代理」→ 前端包成「媒体下载失败：415」。

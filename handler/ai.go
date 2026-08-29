@@ -2,6 +2,7 @@ package handler
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -163,14 +164,21 @@ func proxyAIRequest(w http.ResponseWriter, r *http.Request, path string) {
 		}
 		// 图片/文本等非视频模型：按 账户余额 乘以生成数量 count
 		// 视频模型（KIE/APIMart 视频路径也走 handler/video_task.go 不在这里）：默认 per_call
+		// Sprint 3：cents = (按 group 倍率算出的 per-unit) * count/seconds
+		unitCents, unitErr := service.CalcUnitCostCents(modelName, user.GroupID)
+		if unitErr != nil {
+			log.Printf("AI proxy calc unit cost failed: model=%s err=%v", modelName, unitErr)
+			FailWithStatus(w, http.StatusBadRequest, "该模型暂未配置价格，请联系管理员或换一个模型")
+			return
+		}
 		if modelCost.Unit == model.ModelCostUnitPerSecond && modelCost.CostCentsPerSecond > 0 {
 			seconds := readVideoSecondsFromBody(body, contentType)
 			if seconds <= 0 {
 				seconds = 1
 			}
-			cents = modelCost.CostCentsPerSecond * seconds * readAIRequestCount(body, contentType)
+			cents = unitCents * seconds * readAIRequestCount(body, contentType)
 		} else {
-			cents = modelCost.CostCents * readAIRequestCount(body, contentType)
+			cents = unitCents * readAIRequestCount(body, contentType)
 		}
 		// 兜底：配置存在但金额为 0（手工配了 0 元或自动价 0 元）也拒绝，
 		// 防止 admin 误配或上游定价 0 元导致免费用付费云端渠道。
@@ -180,6 +188,23 @@ func proxyAIRequest(w http.ResponseWriter, r *http.Request, path string) {
 			return
 		}
 	}
+	// Sprint 2：本地渠道不走 retry（单次请求）；云端渠道走新 selector + retry loop
+	if userChannelID != "" {
+		runLocalChannelSingle(w, r, startedAt, path, modelName, user, channel, body, contentType, cents)
+		return
+	}
+	runRemoteChannelWithRetry(w, r, startedAt, path, modelName, user, body, contentType, cents)
+}
+
+// runLocalChannelSingle 本地渠道单次请求（Sprint 2 抽出来；不走 retry）。
+func runLocalChannelSingle(
+	w http.ResponseWriter, r *http.Request,
+	startedAt time.Time, path, modelName string,
+	user model.AuthUser,
+	channel model.ModelChannel, body []byte, contentType string,
+	cents int,
+) {
+	var err error
 	upstreamPath := resolveAIProxyPath(channel, modelName, path)
 	if service.IsMiMoTTSModelName(modelName) && path == "/audio/speech" {
 		body, contentType, err = normalizeMiMoTTSBody(body, contentType, modelName)
@@ -253,7 +278,7 @@ func proxyAIRequest(w http.ResponseWriter, r *http.Request, path string) {
 	}
 	var holdID string
 	if cents > 0 {
-		holdID, err = service.ConsumeUserBalanceWithHold(user.ID, modelName, cents, upstreamPath, readRequestID(r))
+		holdID, err = service.ConsumeUserBalanceWithHold(user.ID, modelName, cents, upstreamPath, readRequestID(r), tokenIDFromContext(r.Context()))
 		if err != nil {
 			FailError(w, err)
 			return
@@ -267,10 +292,248 @@ func proxyAIRequest(w http.ResponseWriter, r *http.Request, path string) {
 		Channel:         channel,
 		UserID:          user.ID,
 		UserDisplayName: firstNonEmpty(user.DisplayName, user.Username),
+		TokenID:         tokenIDFromContext(r.Context()),
 		CostCents:         cents,
 		RequestBody:     summarizeAIRequest(body, contentType),
 		HoldID:          holdID,
 	}, nil)
+}
+
+// runRemoteChannelWithRetry 云端渠道走新渠道选择器：多 key + 优先级 + 状态码 failover。
+//
+// retry 策略（new-api channel_selector 形态）：
+//  1) 每次 retry 用 service.PickChannelWithRetry 选一个新 channel（exclude 已失败的 + cooldown 中的）
+//  2) 计费只发生在 attempt=0；retry 复用同一 holdID（ConsumeUserBalanceWithHold 用 requestID 幂等）
+//  3) 全部失败：cancel hold + 写 ai_log（attemptIndex=最后一次，upstreamStatusCode=最后一次）
+//  4) 成功：write response + settle hold + 写 ai_log
+func runRemoteChannelWithRetry(
+	w http.ResponseWriter, r *http.Request,
+	startedAt time.Time, path, modelName string,
+	user model.AuthUser,
+	body []byte, contentType string,
+	cents int,
+) {
+	const maxAttempts = 3
+	capability := capabilityOf(path)
+	requestID := readRequestID(r)
+	exclude := make(map[string]bool)
+	var holdID string
+	var lastChannel model.ModelChannel
+	var lastKeyIndex int
+	var lastStatusCode int
+	var lastErrMsg string
+
+	for attempt := 0; attempt < maxAttempts; attempt++ {
+		sel, err := service.PickChannelWithRetry(service.ChannelSelectorRequest{
+			Model:             modelName,
+			Capability:        capability,
+			RetryIndex:        attempt,
+			ExcludeChannelIDs: exclude,
+		})
+		if err != nil {
+			if err == service.ErrNoChannel {
+				if attempt == 0 {
+					log.Printf("AI proxy no channel available: model=%s capability=%s", modelName, capability)
+					Fail(w, "没有可用模型渠道")
+					return
+				}
+				break
+			}
+			log.Printf("AI proxy pick channel failed: model=%s attempt=%d err=%v", modelName, attempt, err)
+			Fail(w, "AI 接口请求失败")
+			return
+		}
+		lastChannel = *sel.Channel
+		lastKeyIndex = sel.KeyIndex
+
+		// 第一次扣费（retry 不再调 ConsumeUserBalanceWithHold，依赖 requestID 幂等命中避免双扣）
+		if attempt == 0 && cents > 0 {
+			holdID, err = service.ConsumeUserBalanceWithHold(user.ID, modelName, cents, path, requestID, tokenIDFromContext(r.Context()))
+			if err != nil {
+				FailError(w, err)
+				return
+			}
+		}
+
+		// 每次 retry 都重新做 body normalization（不同 channel url/格式可能不同）
+		channel := *sel.Channel
+		upstreamPath := resolveAIProxyPath(channel, modelName, path)
+		attemptBody := body
+		attemptContentType := contentType
+		var nerr error
+		if service.IsMiMoTTSModelName(modelName) && path == "/audio/speech" {
+			attemptBody, attemptContentType, nerr = normalizeMiMoTTSBody(attemptBody, attemptContentType, modelName)
+		} else if isKIEChannel(channel, modelName) && upstreamPath == "/jobs/createTask" {
+			attemptBody, attemptContentType, nerr = normalizeKIEVideoBody(attemptBody, attemptContentType, modelName, channel)
+		} else if isAPIMartChannel(channel, modelName) && upstreamPath == "/videos/generations" {
+			attemptBody, attemptContentType, nerr = normalizeAPIMartVideoBody(attemptBody, attemptContentType, modelName, channel)
+		} else if upstreamPath == "/images/generations" || upstreamPath == "/images/edits" {
+			attemptBody, attemptContentType, nerr = normalizeRemoteImageBody(attemptBody, attemptContentType, modelName, channel)
+		}
+		if nerr != nil {
+			log.Printf("AI proxy normalize body failed: channel=%s model=%s err=%v", channel.ID, modelName, nerr)
+			if holdID != "" {
+				holdCancel(holdID, "normalize body failed")
+			}
+			Fail(w, "请求参数解析失败")
+			return
+		}
+
+		// 发请求
+		req, rerr := http.NewRequest(http.MethodPost, service.BuildModelChannelURL(channel, upstreamPath), bytes.NewReader(attemptBody))
+		if rerr != nil {
+			log.Printf("AI proxy build request failed: url=%s err=%v", service.BuildModelChannelURL(channel, upstreamPath), rerr)
+			exclude[channel.ID] = true
+			lastErrMsg = rerr.Error()
+			continue
+		}
+		req.Header.Set("Authorization", "Bearer "+sel.APIKey)
+		if attemptContentType != "" {
+			req.Header.Set("Content-Type", attemptContentType)
+		}
+
+		statusCode, bodyBytes, respHeaders, doErr := doProbeRequest(channel, req)
+		lastStatusCode = statusCode
+
+		if doErr == nil && statusCode < 400 {
+			writeProbeResponse(w, statusCode, bodyBytes, respHeaders)
+			holdSettle(holdID)
+			saveAIProxyLog(aiLogContext{
+				StartedAt:          startedAt,
+				Endpoint:           path,
+				Method:             http.MethodPost,
+				Model:              modelName,
+				Channel:            channel,
+				UserID:             user.ID,
+				UserDisplayName:    firstNonEmpty(user.DisplayName, user.Username),
+				TokenID:            tokenIDFromContext(r.Context()),
+				CostCents:          cents,
+				RequestBody:        summarizeAIRequest(attemptBody, attemptContentType),
+				HoldID:             holdID,
+				AttemptIndex:       attempt,
+				UpstreamStatusCode: statusCode,
+				KeyIndex:           sel.KeyIndex,
+			}, statusCode, string(bodyBytes), "")
+			return
+		}
+
+		errMsg := ""
+		if doErr != nil {
+			errMsg = doErr.Error()
+		}
+		service.MarkChannelFail(&channel, sel.KeyIndex, statusCode)
+		service.RecordChannelFailWithContext(&channel, sel.KeyIndex, statusCode, errMsg, modelName, capability)
+		exclude[channel.ID] = true
+		if errMsg == "" {
+			errMsg = fmt.Sprintf("HTTP %d", statusCode)
+		}
+		lastErrMsg = errMsg
+		log.Printf("AI proxy attempt failed: model=%s channel=%s keyIndex=%d status=%d err=%v (will retry %d/%d)",
+			modelName, channel.ID, sel.KeyIndex, statusCode, doErr, attempt+1, maxAttempts)
+	}
+
+	// 全部 retry 失败
+	if holdID != "" {
+		holdCancel(holdID, "all retries failed")
+	}
+	saveAIProxyLog(aiLogContext{
+		StartedAt:          startedAt,
+		Endpoint:           path,
+		Method:             http.MethodPost,
+		Model:              modelName,
+		Channel:            lastChannel,
+		UserID:             user.ID,
+		UserDisplayName:    firstNonEmpty(user.DisplayName, user.Username),
+		TokenID:            tokenIDFromContext(r.Context()),
+		CostCents:          cents,
+		RequestBody:        summarizeAIRequest(body, contentType),
+		HoldID:             "",
+		AttemptIndex:       maxAttempts - 1,
+		UpstreamStatusCode: lastStatusCode,
+		KeyIndex:           lastKeyIndex,
+	}, lastStatusCode, "", lastErrMsg)
+	Fail(w, "所有渠道均失败，请稍后重试")
+}
+
+// capabilityOf 把 URL path 映射到 capability。Sprint 2 仅识别现有 handler 路径；Sprint 4 视频任务再扩。
+func capabilityOf(path string) string {
+	switch path {
+	case "/chat/completions", "/responses":
+		return "text"
+	case "/images/generations", "/images/edits":
+		return "image"
+	case "/audio/speech":
+		return "audio"
+	default:
+		return ""
+	}
+}
+
+// normalizeRemoteImageBody 提取 images/* 路径的 normalization 公共逻辑（retry 时每轮调用）。
+func normalizeRemoteImageBody(body []byte, contentType, modelName string, channel model.ModelChannel) ([]byte, string, error) {
+	if strings.HasPrefix(strings.ToLower(contentType), "multipart/form-data") {
+		return body, contentType, nil
+	}
+	if apimartImageModelIsGemini(modelName) {
+		var payload map[string]any
+		if err := json.Unmarshal(body, &payload); err == nil {
+			if size, _ := payload["size"].(string); strings.TrimSpace(size) != "" {
+				snapped := snapGeminiAspectRatio(size)
+				if snapped != size {
+					if newBody, err := json.Marshal(payload); err == nil {
+						body = newBody
+					}
+				}
+			}
+		}
+	}
+	if isAPIMartChannel(channel, modelName) {
+		if bad, blocked := apimartImageModelUnsupportedByUpstream(modelName); blocked {
+			return body, contentType, fmt.Errorf("apimart 渠道当前不接受 %q 做图像生成", bad)
+		}
+		var err error
+		body, contentType, err = normalizeAPIMartImageBody(body, contentType, modelName, channel)
+		if err != nil {
+			return body, contentType, err
+		}
+	}
+	return body, contentType, nil
+}
+
+// doProbeRequest 一次性发请求并捕获 statusCode / body / headers / err。
+// 抽出来给 runRemoteChannelWithRetry 用；copyAIResponse 走自己的 stream 路径。
+func doProbeRequest(channel model.ModelChannel, request *http.Request) (statusCode int, body []byte, respHeaders http.Header, err error) {
+	resp, derr := service.HTTPClientForChannel(channel).Do(request)
+	if derr != nil {
+		return 0, nil, nil, derr
+	}
+	defer resp.Body.Close()
+	// 最多读 256KB（够判 status / 错误体；大文件走 stream 不进这里）
+	limited := io.LimitReader(resp.Body, 256*1024)
+	buf, rerr := io.ReadAll(limited)
+	if rerr != nil {
+		return resp.StatusCode, nil, resp.Header, rerr
+	}
+	return resp.StatusCode, buf, resp.Header, nil
+}
+
+// writeProbeResponse 把 doProbeRequest 拿到的响应写回客户端。
+// 不支持流式（云端 retry 场景主要是 JSON 短响应：图片生成、文本、音频）；流式走 copyAIResponse 路径。
+func writeProbeResponse(w http.ResponseWriter, statusCode int, body []byte, respHeaders http.Header) {
+	if respHeaders != nil {
+		for k, vs := range respHeaders {
+			if strings.EqualFold(k, "Content-Length") {
+				continue
+			}
+			for _, v := range vs {
+				w.Header().Add(k, v)
+			}
+		}
+	}
+	w.WriteHeader(statusCode)
+	if len(body) > 0 {
+		_, _ = w.Write(body)
+	}
 }
 
 type aiLogContext struct {
@@ -281,9 +544,14 @@ type aiLogContext struct {
 	Channel         model.ModelChannel
 	UserID          string
 	UserDisplayName string
+	TokenID         string // Sprint 1.1：Bearer sk- 鉴权时记录的 user_token.id；cookie 鉴权时空
 	CostCents int
 	RequestBody     string
 	HoldID          string // BalanceHold ID（2026-08-17 引入，copyAIResponse 用它做 settle/cancel 闭环）
+	// Sprint 2 新增：渠道选择器 retry 诊断
+	AttemptIndex       int
+	UpstreamStatusCode int
+	KeyIndex           int
 }
 
 func copyAIResponse(w http.ResponseWriter, request *http.Request, channel model.ModelChannel, logContext aiLogContext, onFailure func()) {
@@ -413,12 +681,16 @@ func saveAIProxyLog(context aiLogContext, status int, responseBody string, error
 		Model:           context.Model,
 		ChannelID:       context.Channel.ID,
 		ChannelName:     context.Channel.Name,
+		TokenID:         context.TokenID,
 		Status:          status,
 		DurationMs:      time.Since(context.StartedAt).Milliseconds(),
 		CostCents:         context.CostCents,
 		RequestBody:     context.RequestBody,
 		ResponseBody:    responseBody,
-		Error:           errorMessage,
+		// Sprint 2 诊断字段
+		AttemptIndex:       context.AttemptIndex,
+		UpstreamStatusCode: context.UpstreamStatusCode,
+		KeyIndex:           context.KeyIndex,
 	})
 }
 
@@ -427,6 +699,15 @@ func firstNonEmpty(values ...string) string {
 		if strings.TrimSpace(value) != "" {
 			return value
 		}
+	}
+	return ""
+}
+
+// tokenIDFromContext 从 ctx 取当前请求的 sk- token id（Bearer 鉴权时由 authUser 注入）。
+// cookie 鉴权或未登录返回空字符串。
+func tokenIDFromContext(ctx context.Context) string {
+	if t, ok := service.UserTokenFromContext(ctx); ok {
+		return t.ID
 	}
 	return ""
 }

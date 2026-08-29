@@ -28,6 +28,14 @@ func main() {
 		log.Fatal(err)
 	}
 	service.StartPromptSyncScheduler()
+	// Sprint 2：启动期构建渠道选择器倒排索引（admin 改 channels 后 SaveSettings 会重建）
+	if err := service.BuildAbilityCache(); err != nil {
+		log.Printf("build ability cache failed: %v", err)
+	}
+	// Sprint 3：seed 4 个内置 user group（default/plus/pro/enterprise）
+	if err := service.SeedDefaultUserGroups(); err != nil {
+		log.Printf("seed default user groups failed: %v", err)
+	}
 	service.StartCanvasProjectCleanupScheduler()
 	service.StartBalanceHoldSweepScheduler()
 	service.StartModelStatusScheduler()

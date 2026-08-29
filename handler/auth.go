@@ -32,6 +32,7 @@ type saveUserRequest struct {
 	DisplayName string           `json:"displayName"`
 	Role        model.UserRole   `json:"role"`
 	Status      model.UserStatus `json:"status"`
+	GroupID     string           `json:"groupId"` // Sprint 3
 }
 
 type adjustUserBalanceRequest struct {
@@ -185,6 +186,7 @@ func AdminSaveUser(w http.ResponseWriter, r *http.Request) {
 		DisplayName: request.DisplayName,
 		Role:        request.Role,
 		Status:      request.Status,
+		GroupID:     request.GroupID, // Sprint 3
 	}, request.Password)
 	if err != nil {
 		FailError(w, err)

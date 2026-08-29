@@ -197,6 +197,14 @@ export type AdminModelChannel = {
     timeout: number;
     enabled: boolean;
     remark: string;
+
+    // Sprint 2.5 新增：与后端 model/setting.go::ModelChannel 字段一一对应
+    priority?: number; // 0=默认；数字小=优先
+    statusCodeMapping?: string; // "429,500,502,503"；空=默认 429/5xx
+    cooldownSeconds?: number; // 0=默认 60s
+    keys?: string[]; // 多 key 列表；空=回退 apiKey
+    group?: string; // Sprint 3 启用，先留空
+    capability?: "" | "text" | "image" | "video" | "audio"; // 空=通用
 };
 
 export type AdminPublicModelChannelSettings = {
@@ -241,6 +249,14 @@ export type AdminPublicModelChannelInfo = {
     timeout: number;
     enabled: boolean;
     remark: string;
+
+    // Sprint 2.5 新增：后端 PublicModelChannelInfo 已有，前端 type 同步
+    priority?: number;
+    statusCodeMapping?: string;
+    cooldownSeconds?: number;
+    keyCount?: number;
+    group?: string;
+    capability?: string;
 };
 
 export type AdminPublicSettings = {
@@ -397,6 +413,54 @@ export async function fetchChannelModels(token: string, payload: AdminChannelAct
 
 export async function testChannelModel(token: string, payload: AdminChannelActionRequest) {
     return apiPost<string>("/api/admin/settings/channel-test", payload, token);
+}
+
+// ===== Sprint 2.6 渠道健康度 =====
+
+export type AdminChannelHealthItem = {
+    channelId: string;
+    channelName: string;
+    failureCount: number;
+    lastFailureAt: string; // RFC3339；空字符串=从未失败过
+    lastStatusCode: number;
+    isInCooldown: boolean;
+    cooldownRemaining: number; // 秒；0=未冷却
+    affectedModels: string[];
+};
+
+export type AdminChannelFailLogEntry = {
+    channelId: string;
+    channelName: string;
+    model: string;
+    capability: string;
+    keyIndex: number;
+    statusCode: number;
+    errorMessage: string;
+    at: string; // RFC3339
+};
+
+export type AdminChannelsHealth = {
+    summary: {
+        totalFailures: number;
+        uniqueChannels: number;
+        uniqueModels: number;
+        longestCooldownRemaining: number;
+    };
+    channels: AdminChannelHealthItem[];
+    recentFailures: AdminChannelFailLogEntry[];
+    now: string;
+};
+
+export async function fetchChannelsHealth(token: string) {
+    return apiGet<AdminChannelsHealth>("/api/admin/channels-health", undefined, token);
+}
+
+export async function clearChannelCooldowns(token: string) {
+    return apiPost<{ code: number; data: { cleared: number }; msg: string }>(
+        "/api/admin/channels-health/clear-cooldowns",
+        {},
+        token,
+    );
 }
 
 export type StorageCapacityResult = {
