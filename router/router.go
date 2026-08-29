@@ -98,6 +98,12 @@ func New() *gin.Engine {
 	v1.POST("/novel/export/caption", gin.WrapF(handler.GeneratePlatformCaption))
 	v1.GET("/novel/export/history", gin.WrapF(handler.ListExportHistory))
 	v1.GET("/novel/export/download", gin.WrapF(handler.DownloadComposition))
+	// novel-workflow v2：novel-rerun-layer (★ 核心 UX)
+	v1.POST("/novel/rerun/shot", gin.WrapF(handler.RerunShotLayer))
+	v1.POST("/novel/rerun/full", gin.WrapF(handler.RerunFullLayer))
+	v1.POST("/novel/rerun/rollback", gin.WrapF(handler.RollbackVersion))
+	v1.GET("/novel/rerun/versions", gin.WrapF(handler.ListVersions))
+	v1.GET("/novel/rerun/latest", gin.WrapF(handler.GetLatestVersion))
 	v1.DELETE("/user-tokens/:id", func(c *gin.Context) {
 		handler.DeleteUserTokenHandler(c.Writer, c.Request)
 	})

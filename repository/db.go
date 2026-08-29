@@ -92,6 +92,8 @@ func DB() (*gorm.DB, error) {
 			&model.BgmCustom{},
 			// novel-workflow v2：composition-layer
 			&model.CompositionTask{},
+			// novel-workflow v2：novel-rerun-layer (核心 UX: 重做历史)
+			&model.RerunRecord{},
 		)
 	})
 	return db, dbErr
