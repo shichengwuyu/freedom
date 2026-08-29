@@ -86,6 +86,10 @@ func DB() (*gorm.DB, error) {
 			&model.NovelWorkflowNode{},
 			// novel-workflow v2：shot-dubbing-node
 			&model.ShotDubbing{},
+			// novel-workflow v2：shot-subtitle-node
+			&model.ShotSubtitle{},
+			// novel-workflow v2：bgm-layer
+			&model.BgmCustom{},
 		)
 	})
 	return db, dbErr

@@ -75,6 +75,17 @@ func New() *gin.Engine {
 	v1.POST("/novel/dubbing/dispatch", gin.WrapF(handler.DispatchShotDubbing))
 	v1.POST("/novel/dubbing/dispatch-project", gin.WrapF(handler.DispatchProjectDubbing))
 	v1.GET("/novel/dubbing", gin.WrapF(handler.ListShotDubbings))
+	// novel-workflow v2：shot-subtitle-node
+	v1.POST("/novel/subtitle/dispatch", gin.WrapF(handler.DispatchShotSubtitle))
+	v1.POST("/novel/subtitle/dispatch-project", gin.WrapF(handler.DispatchProjectSubtitle))
+	v1.PUT("/novel/subtitle/:projectId/:shotId/lines", gin.WrapF(handler.UpdateSubtitleLines))
+	v1.GET("/novel/subtitle", gin.WrapF(handler.GetShotSubtitle))   // 旧路径, 单条（?projectId=&shotId=）
+	v1.GET("/novel/subtitles", gin.WrapF(handler.ListShotSubtitles)) // 列表（?projectId=）
+	// novel-workflow v2：bgm-layer
+	v1.GET("/bgm/presets", gin.WrapF(handler.ListBgmPresets))    // 公开
+	v1.GET("/bgm/custom", gin.WrapF(handler.ListBgmCustoms))
+	v1.POST("/bgm/custom/upload", gin.WrapF(handler.UploadBgmCustom))
+	v1.DELETE("/bgm/custom/:id", gin.WrapF(handler.DeleteBgmCustom))
 	v1.DELETE("/user-tokens/:id", func(c *gin.Context) {
 		handler.DeleteUserTokenHandler(c.Writer, c.Request)
 	})

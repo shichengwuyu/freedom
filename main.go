@@ -57,6 +57,10 @@ func main() {
 	handler.StartStoryboardTaskRunner()
 	// novel-workflow v2：启动工作流状态聚合 worker（5s 轮询）
 	service.StartNovelWorkflowWorker(context.Background())
+	// novel-workflow v2：加载 BGM 预设（manifest + mp3 校验）
+	if err := service.LoadBgmPresets(); err != nil {
+		log.Printf("load bgm presets failed: %v", err)
+	}
 
 	// 优雅关闭：捕获 SIGINT/SIGTERM，等待 in-flight 请求完成再退出。
 	srv := &http.Server{
