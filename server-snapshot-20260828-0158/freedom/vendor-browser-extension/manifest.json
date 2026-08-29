@@ -1,0 +1,69 @@
+{
+  "manifest_version": 3,
+  "name": "云端供应商 Cookie 收集器（for 无限画布）",
+  "short_name": "供应商Cookie助手",
+  "version": "1.1.1",
+  "description": "提取 UpDream / LibTV / NewWow 的登录 Cookie 并绑定无限画布；嗅探 UpDream / NewWow 官网的生图内部接口请求作为样本回传后端，实现无开放平台供应商的云端生图能力。",
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "供应商 Cookie 助手",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png"
+    }
+  },
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "permissions": [
+    "cookies",
+    "storage",
+    "tabs",
+    "alarms",
+    "declarativeContent",
+    "webRequest"
+  ],
+  "host_permissions": [
+    "*://*.updream.cn/*",
+    "*://*.liblib.tv/*",
+    "*://*.liblibai.cloud/*",
+    "*://*.liblib.art/*",
+    "*://*.neowow.cn/*",
+    "http://localhost/*",
+    "http://127.0.0.1/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "*://*.updream.cn/*",
+        "*://*.liblib.tv/*",
+        "*://*.liblib.art/*",
+        "*://*.neowow.cn/*"
+      ],
+      "js": ["content.js"],
+      "css": ["content.css"],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "icons/*"
+      ],
+      "matches": [
+        "*://*.updream.cn/*",
+        "*://*.liblib.tv/*",
+        "*://*.liblib.art/*",
+        "*://*.neowow.cn/*"
+      ]
+    }
+  ]
+}

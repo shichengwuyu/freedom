@@ -1,0 +1,5 @@
+USE freedom;
+ALTER TABLE prompts MODIFY COLUMN prompt LONGTEXT;
+ALTER TABLE prompts MODIFY COLUMN preview LONGTEXT;
+SHOW COLUMNS FROM prompts LIKE 'prompt';
+SHOW COLUMNS FROM prompts LIKE 'preview';

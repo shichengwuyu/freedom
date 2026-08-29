@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <title>云端供应商助手</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body class="popup-body">
+  <div class="popup-header">
+    <img src="icons/icon32.png" class="logo" alt="" />
+    <div class="title">
+      <div class="title-main">云端供应商助手</div>
+      <div class="title-sub">采集 Cookie · 嗅探生成样本 · 绑定无限画布</div>
+    </div>
+  </div>
+
+  <section class="card no-pad-bottom">
+    <div class="card-title">供应商 Cookie 采集</div>
+    <div class="hint" style="margin-bottom:12px;">
+      1. 点「去登录」打开官网登录 → 2. 点「立即采集」抓取 Cookie → 3. 回无限画布项目粘贴绑定（或在官网点气泡「绑定」直接提交）
+    </div>
+    <div id="vendorList" class="vendor-list"></div>
+  </section>
+
+  <section class="card">
+    <div class="card-title">连接设置</div>
+    <div class="hint" style="margin-bottom:10px;">
+      填写「无限画布」Web 地址（与前端打开的地址一致，如 http://localhost:3000）和登录 Token，样本与一键绑定才会被推送到你的账户。
+    </div>
+    <label class="field">
+      <span class="field-label">Web 地址</span>
+      <input id="settingBase" class="input field-input" type="text" placeholder="http://localhost:3000" />
+    </label>
+    <label class="field">
+      <span class="field-label">登录 Token</span>
+      <input id="settingToken" class="input field-input" type="text" placeholder="从「无限画布」设置页复制登录 Token" />
+    </label>
+    <div class="row" style="margin-top:8px;">
+      <button class="btn btn-sm btn-primary" id="saveSettings">保存设置</button>
+      <span id="settingsHint" class="settings-hint"></span>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="card-title">生成样本嗅探</div>
+    <div class="hint" style="margin-bottom:10px;">
+      在 UpDream / NewWow 官网生成一次图片，插件会自动抓取内部接口请求（已排除登录/鉴权等敏感接口）。回到这里点「推送」把样本回传给后端，后端据此学习接口形状并复用你的 Cookie 重放。
+    </div>
+    <div id="sampleList" class="sample-list"></div>
+    <div class="row" style="margin-top:10px;">
+      <button class="btn btn-sm btn-primary" id="pushAllSamples">推送全部样本</button>
+      <button class="btn btn-sm btn-ghost" id="clearAllSamples">清空全部</button>
+    </div>
+    <div id="pushResult" class="push-result"></div>
+  </section>
+
+  <section class="footer">
+    <div class="version">v1.1.0 · MV3</div>
+  </section>
+
+  <script src="popup.js"></script>
+</body>
+</html>

@@ -1,0 +1,2 @@
+./web/src/components/model-picker.tsx
+./web/src/lib/video-model-capabilities.ts

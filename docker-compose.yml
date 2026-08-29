@@ -1,0 +1,26 @@
+services:
+  app:
+    image: freedom:local
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: freedom
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+          cpus: "2.0"
+    networks:
+      - default
+      - hk_default
+
+networks:
+  hk_default:
+    external: true

@@ -1,0 +1,42 @@
+.next/
+out/
+node_modules/
+.env*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example
+data/
+deploy/hk/.env.server
+deploy/build/.env
+deploy/deploy-hk.sh
+deploy/deploy.sh
+/director/
+tmp/
+*.log
+*.tsbuildinfo
+.DS_Store
+.idea
+*.exe
+*.exe~
+*.tar.gz
+freedom-src-latest.tar.gz
+# 分片上传/下载碎片（部署包、源码包分片）
+*.part_*
+*.part
+page-image.tar.gz
+# 调试探针 & 临时 agent 配置（一次性探查产物，不应入库）
+_probe_gz.bin
+_probe_script.js
+agent*.json
+gem.json
+gpth.json
+# IDE / AI 工具临时目录
+.workbuddy/
+.trae/
+# Playwright 浏览器目录（playwright install 时下载，按需重装）
+.pw-browsers/
+# 个人文件（不入仓）
+简历.md
+面试八股文准备.md
+面试问答准备.md
