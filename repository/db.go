@@ -94,6 +94,8 @@ func DB() (*gorm.DB, error) {
 			&model.CompositionTask{},
 			// novel-workflow v2：novel-rerun-layer (核心 UX: 重做历史)
 			&model.RerunRecord{},
+			// novel-workflow v2：series-asset-lock (漫剧级资产锁定)
+			&model.SeriesAssetLock{},
 		)
 	})
 	return db, dbErr

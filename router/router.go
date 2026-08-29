@@ -104,6 +104,11 @@ func New() *gin.Engine {
 	v1.POST("/novel/rerun/rollback", gin.WrapF(handler.RollbackVersion))
 	v1.GET("/novel/rerun/versions", gin.WrapF(handler.ListVersions))
 	v1.GET("/novel/rerun/latest", gin.WrapF(handler.GetLatestVersion))
+	// novel-workflow v2：series-asset-lock (漫剧级资产锁定)
+	v1.GET("/novel/series-asset-lock", gin.WrapF(handler.GetSeriesAssetLock))
+	v1.PUT("/novel/series-asset-lock", gin.WrapF(handler.UpdateSeriesAssetLock))
+	v1.POST("/novel/series-asset-lock/lock", gin.WrapF(handler.LockSeriesAssetLock))
+	v1.POST("/novel/series-asset-lock/unlock", gin.WrapF(handler.UnlockSeriesAssetLock))
 	v1.DELETE("/user-tokens/:id", func(c *gin.Context) {
 		handler.DeleteUserTokenHandler(c.Writer, c.Request)
 	})
