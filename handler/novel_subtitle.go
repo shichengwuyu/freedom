@@ -78,14 +78,12 @@ type UpdateSubtitleLinesReq struct {
 }
 
 // UpdateSubtitleLines PUT /api/v1/novel/subtitle/:projectId/:shotId/lines
-func UpdateSubtitleLines(w http.ResponseWriter, r *http.Request) {
+func UpdateSubtitleLines(w http.ResponseWriter, r *http.Request, projectID, shotID string) {
 	user, ok := service.UserFromContext(r.Context())
 	if !ok {
 		FailWithStatus(w, http.StatusUnauthorized, "未登录")
 		return
 	}
-	projectID := r.PathValue("projectId")
-	shotID := r.PathValue("shotId")
 	if projectID == "" || shotID == "" {
 		FailWithStatus(w, http.StatusBadRequest, "projectId/shotId 不能为空")
 		return

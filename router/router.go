@@ -66,11 +66,21 @@ func New() *gin.Engine {
 	// novel-workflow v2：工作流编排层 HTTP API
 	v1.POST("/novel/workflows", gin.WrapF(handler.CreateNovelWorkflowRun))
 	v1.GET("/novel/workflows", gin.WrapF(handler.ListNovelWorkflowRuns))
-	v1.GET("/novel/workflows/:id", gin.WrapF(handler.GetNovelWorkflowRun))
-	v1.POST("/novel/workflows/:id/start", gin.WrapF(handler.StartNovelWorkflowRun))
-	v1.POST("/novel/workflows/:id/nodes/:nodeId/start", gin.WrapF(handler.StartNovelWorkflowNode))
-	v1.POST("/novel/workflows/:id/nodes/:nodeId/cancel", gin.WrapF(handler.CancelNovelWorkflowNode))
-	v1.POST("/novel/workflows/:id/nodes/:nodeId/retry", gin.WrapF(handler.RetryNovelWorkflowNode))
+	v1.GET("/novel/workflows/:id", func(c *gin.Context) {
+		handler.GetNovelWorkflowRun(c.Writer, c.Request, c.Param("id"))
+	})
+	v1.POST("/novel/workflows/:id/start", func(c *gin.Context) {
+		handler.StartNovelWorkflowRun(c.Writer, c.Request, c.Param("id"))
+	})
+	v1.POST("/novel/workflows/:id/nodes/:nodeId/start", func(c *gin.Context) {
+		handler.StartNovelWorkflowNode(c.Writer, c.Request, c.Param("id"), c.Param("nodeId"))
+	})
+	v1.POST("/novel/workflows/:id/nodes/:nodeId/cancel", func(c *gin.Context) {
+		handler.CancelNovelWorkflowNode(c.Writer, c.Request, c.Param("id"), c.Param("nodeId"))
+	})
+	v1.POST("/novel/workflows/:id/nodes/:nodeId/retry", func(c *gin.Context) {
+		handler.RetryNovelWorkflowNode(c.Writer, c.Request, c.Param("id"), c.Param("nodeId"))
+	})
 	// novel-workflow v2：shot-dubbing-node
 	v1.POST("/novel/dubbing/dispatch", gin.WrapF(handler.DispatchShotDubbing))
 	v1.POST("/novel/dubbing/dispatch-project", gin.WrapF(handler.DispatchProjectDubbing))
@@ -78,21 +88,33 @@ func New() *gin.Engine {
 	// novel-workflow v2：shot-subtitle-node
 	v1.POST("/novel/subtitle/dispatch", gin.WrapF(handler.DispatchShotSubtitle))
 	v1.POST("/novel/subtitle/dispatch-project", gin.WrapF(handler.DispatchProjectSubtitle))
-	v1.PUT("/novel/subtitle/:projectId/:shotId/lines", gin.WrapF(handler.UpdateSubtitleLines))
+	v1.PUT("/novel/subtitle/:projectId/:shotId/lines", func(c *gin.Context) {
+		handler.UpdateSubtitleLines(c.Writer, c.Request, c.Param("projectId"), c.Param("shotId"))
+	})
 	v1.GET("/novel/subtitle", gin.WrapF(handler.GetShotSubtitle))   // 旧路径, 单条（?projectId=&shotId=）
 	v1.GET("/novel/subtitles", gin.WrapF(handler.ListShotSubtitles)) // 列表（?projectId=）
 	// novel-workflow v2：bgm-layer
 	v1.GET("/bgm/presets", gin.WrapF(handler.ListBgmPresets))    // 公开
 	v1.GET("/bgm/custom", gin.WrapF(handler.ListBgmCustoms))
 	v1.POST("/bgm/custom/upload", gin.WrapF(handler.UploadBgmCustom))
-	v1.DELETE("/bgm/custom/:id", gin.WrapF(handler.DeleteBgmCustom))
+	v1.DELETE("/bgm/custom/:id", func(c *gin.Context) {
+		handler.DeleteBgmCustom(c.Writer, c.Request, c.Param("id"))
+	})
 	// novel-workflow v2：composition-layer
 	v1.POST("/novel/composition", gin.WrapF(handler.CreateCompositionTask))
 	v1.GET("/novel/composition", gin.WrapF(handler.ListCompositionTasks))
-	v1.GET("/novel/composition/:id", gin.WrapF(handler.GetCompositionTask))
-	v1.POST("/novel/composition/:id/start", gin.WrapF(handler.StartCompositionTask))
-	v1.POST("/novel/composition/:id/stop", gin.WrapF(handler.StopCompositionTask))
-	v1.POST("/novel/composition/:id/retry", gin.WrapF(handler.RetryCompositionTask))
+	v1.GET("/novel/composition/:id", func(c *gin.Context) {
+		handler.GetCompositionTask(c.Writer, c.Request, c.Param("id"))
+	})
+	v1.POST("/novel/composition/:id/start", func(c *gin.Context) {
+		handler.StartCompositionTask(c.Writer, c.Request, c.Param("id"))
+	})
+	v1.POST("/novel/composition/:id/stop", func(c *gin.Context) {
+		handler.StopCompositionTask(c.Writer, c.Request, c.Param("id"))
+	})
+	v1.POST("/novel/composition/:id/retry", func(c *gin.Context) {
+		handler.RetryCompositionTask(c.Writer, c.Request, c.Param("id"))
+	})
 	// novel-workflow v2：export-layer
 	v1.GET("/novel/export/metadata", gin.WrapF(handler.GetExportMetadata))
 	v1.POST("/novel/export/caption", gin.WrapF(handler.GeneratePlatformCaption))

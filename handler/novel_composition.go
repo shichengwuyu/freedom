@@ -52,13 +52,12 @@ func CreateCompositionTask(w http.ResponseWriter, r *http.Request) {
 //
 // v2 同步执行：会阻塞直到 ffmpeg 完成（长任务可能 30s-5min）。
 // 真实部署应改异步（写 status=queued + worker 拉取）。
-func StartCompositionTask(w http.ResponseWriter, r *http.Request) {
+func StartCompositionTask(w http.ResponseWriter, r *http.Request, id string) {
 	user, ok := service.UserFromContext(r.Context())
 	if !ok {
 		FailWithStatus(w, http.StatusUnauthorized, "未登录")
 		return
 	}
-	id := r.PathValue("id")
 	if id == "" {
 		FailWithStatus(w, http.StatusBadRequest, "id 不能为空")
 		return
@@ -76,21 +75,17 @@ func StartCompositionTask(w http.ResponseWriter, r *http.Request) {
 		FailWithStatus(w, http.StatusInternalServerError, "合成失败: "+err.Error())
 		return
 	}
-	// 重新读一次（status 已被 service 改）
 	task, _ = service.GetCompositionTask(id, user.ID)
 	writeJSON(w, map[string]any{"code": 0, "data": task})
 }
 
 // StopCompositionTask POST /api/v1/novel/composition/:id/stop
-//
-// v2 简化：仅把 status 标 canceled（不真 kill ffmpeg）；v3 接 ctx cancel。
-func StopCompositionTask(w http.ResponseWriter, r *http.Request) {
+func StopCompositionTask(w http.ResponseWriter, r *http.Request, id string) {
 	user, ok := service.UserFromContext(r.Context())
 	if !ok {
 		FailWithStatus(w, http.StatusUnauthorized, "未登录")
 		return
 	}
-	id := r.PathValue("id")
 	if err := service.CancelCompositionTask(id, user.ID); err != nil {
 		FailWithStatus(w, http.StatusBadRequest, "取消失败: "+err.Error())
 		return
@@ -99,13 +94,12 @@ func StopCompositionTask(w http.ResponseWriter, r *http.Request) {
 }
 
 // RetryCompositionTask POST /api/v1/novel/composition/:id/retry
-func RetryCompositionTask(w http.ResponseWriter, r *http.Request) {
+func RetryCompositionTask(w http.ResponseWriter, r *http.Request, id string) {
 	user, ok := service.UserFromContext(r.Context())
 	if !ok {
 		FailWithStatus(w, http.StatusUnauthorized, "未登录")
 		return
 	}
-	id := r.PathValue("id")
 	task, err := service.GetCompositionTask(id, user.ID)
 	if err != nil || task == nil {
 		FailWithStatus(w, http.StatusNotFound, "任务不存在")
@@ -120,13 +114,12 @@ func RetryCompositionTask(w http.ResponseWriter, r *http.Request) {
 }
 
 // GetCompositionTask GET /api/v1/novel/composition/:id
-func GetCompositionTask(w http.ResponseWriter, r *http.Request) {
+func GetCompositionTask(w http.ResponseWriter, r *http.Request, id string) {
 	user, ok := service.UserFromContext(r.Context())
 	if !ok {
 		FailWithStatus(w, http.StatusUnauthorized, "未登录")
 		return
 	}
-	id := r.PathValue("id")
 	task, err := service.GetCompositionTask(id, user.ID)
 	if err != nil {
 		FailWithStatus(w, http.StatusInternalServerError, "查询失败: "+err.Error())

@@ -44,23 +44,24 @@ func CreateNovelWorkflowRun(w http.ResponseWriter, r *http.Request) {
 }
 
 // StartNovelWorkflowRun POST /api/v1/novel/workflows/:id/start
-func StartNovelWorkflowRun(w http.ResponseWriter, r *http.Request) {
+//
+// novel-workflow v2 fix: 改用 wrapper 传 id 参数（r.PathValue 在 gin wrapF 下拿不到）
+func StartNovelWorkflowRun(w http.ResponseWriter, r *http.Request, id string) {
 	user, ok := service.UserFromContext(r.Context())
 	if !ok {
 		FailWithStatus(w, http.StatusUnauthorized, "未登录")
 		return
 	}
-	runID := r.PathValue("id")
-	if runID == "" {
+	if id == "" {
 		FailWithStatus(w, http.StatusBadRequest, "id 不能为空")
 		return
 	}
-	run, _ := repository.GetNovelWorkflowRun(runID)
+	run, _ := repository.GetNovelWorkflowRun(id)
 	if run == nil || run.UserID != user.ID {
 		FailWithStatus(w, http.StatusNotFound, "run 不存在")
 		return
 	}
-	if err := service.StartNovelWorkflowRun(runID); err != nil {
+	if err := service.StartNovelWorkflowRun(id); err != nil {
 		FailWithStatus(w, http.StatusInternalServerError, "启动失败: "+err.Error())
 		return
 	}
@@ -68,19 +69,18 @@ func StartNovelWorkflowRun(w http.ResponseWriter, r *http.Request) {
 }
 
 // GetNovelWorkflowRun GET /api/v1/novel/workflows/:id
-func GetNovelWorkflowRun(w http.ResponseWriter, r *http.Request) {
+func GetNovelWorkflowRun(w http.ResponseWriter, r *http.Request, id string) {
 	user, ok := service.UserFromContext(r.Context())
 	if !ok {
 		FailWithStatus(w, http.StatusUnauthorized, "未登录")
 		return
 	}
-	runID := r.PathValue("id")
-	run, _ := repository.GetNovelWorkflowRun(runID)
+	run, _ := repository.GetNovelWorkflowRun(id)
 	if run == nil || run.UserID != user.ID {
 		FailWithStatus(w, http.StatusNotFound, "run 不存在")
 		return
 	}
-	nodes, _ := repository.ListNovelWorkflowNodesByRun(runID)
+	nodes, _ := repository.ListNovelWorkflowNodesByRun(id)
 	writeJSON(w, map[string]any{
 		"code": 0,
 		"data": map[string]any{
@@ -91,14 +91,12 @@ func GetNovelWorkflowRun(w http.ResponseWriter, r *http.Request) {
 }
 
 // StartNovelWorkflowNode POST /api/v1/novel/workflows/:id/nodes/:nodeId/start
-func StartNovelWorkflowNode(w http.ResponseWriter, r *http.Request) {
+func StartNovelWorkflowNode(w http.ResponseWriter, r *http.Request, runID, nodeID string) {
 	user, ok := service.UserFromContext(r.Context())
 	if !ok {
 		FailWithStatus(w, http.StatusUnauthorized, "未登录")
 		return
 	}
-	runID := r.PathValue("id")
-	nodeID := r.PathValue("nodeId")
 	run, _ := repository.GetNovelWorkflowRun(runID)
 	if run == nil || run.UserID != user.ID {
 		FailWithStatus(w, http.StatusNotFound, "run 不存在")
@@ -112,14 +110,12 @@ func StartNovelWorkflowNode(w http.ResponseWriter, r *http.Request) {
 }
 
 // CancelNovelWorkflowNode POST /api/v1/novel/workflows/:id/nodes/:nodeId/cancel
-func CancelNovelWorkflowNode(w http.ResponseWriter, r *http.Request) {
+func CancelNovelWorkflowNode(w http.ResponseWriter, r *http.Request, runID, nodeID string) {
 	user, ok := service.UserFromContext(r.Context())
 	if !ok {
 		FailWithStatus(w, http.StatusUnauthorized, "未登录")
 		return
 	}
-	runID := r.PathValue("id")
-	nodeID := r.PathValue("nodeId")
 	run, _ := repository.GetNovelWorkflowRun(runID)
 	if run == nil || run.UserID != user.ID {
 		FailWithStatus(w, http.StatusNotFound, "run 不存在")
@@ -133,14 +129,12 @@ func CancelNovelWorkflowNode(w http.ResponseWriter, r *http.Request) {
 }
 
 // RetryNovelWorkflowNode POST /api/v1/novel/workflows/:id/nodes/:nodeId/retry
-func RetryNovelWorkflowNode(w http.ResponseWriter, r *http.Request) {
+func RetryNovelWorkflowNode(w http.ResponseWriter, r *http.Request, runID, nodeID string) {
 	user, ok := service.UserFromContext(r.Context())
 	if !ok {
 		FailWithStatus(w, http.StatusUnauthorized, "未登录")
 		return
 	}
-	runID := r.PathValue("id")
-	nodeID := r.PathValue("nodeId")
 	run, _ := repository.GetNovelWorkflowRun(runID)
 	if run == nil || run.UserID != user.ID {
 		FailWithStatus(w, http.StatusNotFound, "run 不存在")

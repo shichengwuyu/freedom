@@ -17,49 +17,35 @@ func UpsertShotDubbing(d *model.ShotDubbing) error {
 	if err != nil {
 		return err
 	}
-	// 优先按 ID upsert；ID 为空时按 (project_id, shot_id) upsert
-	if d.ID != "" {
-		return db.Save(d).Error
-	}
-	var existing model.ShotDubbing
-	err = db.First(&existing, "project_id = ? AND shot_id = ?", d.ProjectID, d.ShotID).Error
-	if err == nil {
-		// 已存在：更新关键字段
-		existing.Text = d.Text
-		existing.VoiceID = d.VoiceID
-		existing.Speed = d.Speed
-		existing.TtsModel = d.TtsModel
-		existing.AudioURL = d.AudioURL
-		existing.DurationMs = d.DurationMs
-		existing.Bytes = d.Bytes
-		existing.MimeType = d.MimeType
-		existing.Status = d.Status
-		existing.Error = d.Error
-		existing.GenericTaskID = d.GenericTaskID
-		existing.BalanceLogID = d.BalanceLogID
-		existing.CostCents = d.CostCents
-		if d.CompletedAt != "" {
-			existing.CompletedAt = d.CompletedAt
+	// v2 fix: 通过 (project_id, shot_id) 找现有 ID, 找不到就当新建
+	if d.ID == "" {
+		var existing model.ShotDubbing
+		err = db.First(&existing, "project_id = ? AND shot_id = ?", d.ProjectID, d.ShotID).Error
+		if err == nil {
+			d.ID = existing.ID
+		} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
 		}
-		existing.UpdatedAt = d.UpdatedAt
-		d.ID = existing.ID
-		return db.Save(&existing).Error
 	}
-	if !errors.Is(err, gorm.ErrRecordNotFound) {
-		return err
+	// v2 fix: GORM 字符串主键不会自动生成 ID, 留空会插空串
+	// 如果到这里 ID 还空, 用 project+shot 拼接作为 ID
+	if d.ID == "" {
+		d.ID = "dub:" + d.ProjectID + ":" + d.ShotID
 	}
-	// 不存在：create
-	return db.Create(d).Error
+	return db.Save(d).Error
 }
 
-// GetShotDubbing 取一条（按 project_id + shot_id）。
+// GetShotDubbing 取最新一条（按 project_id + shot_id，按 updated_at desc）。
 func GetShotDubbing(projectID, shotID string) (*model.ShotDubbing, error) {
 	db, err := shotDubbingDB()
 	if err != nil {
 		return nil, err
 	}
 	var d model.ShotDubbing
-	if err := db.First(&d, "project_id = ? AND shot_id = ?", projectID, shotID).Error; err != nil {
+	// v2 fix: 取最新, 避免重做历史多条时取错
+	if err := db.Where("project_id = ? AND shot_id = ?", projectID, shotID).
+		Order("updated_at DESC, created_at DESC").
+		First(&d).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil
 		}

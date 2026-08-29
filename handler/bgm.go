@@ -71,13 +71,12 @@ func UploadBgmCustom(w http.ResponseWriter, r *http.Request) {
 }
 
 // DeleteBgmCustom DELETE /api/v1/bgm/custom/:id
-func DeleteBgmCustom(w http.ResponseWriter, r *http.Request) {
+func DeleteBgmCustom(w http.ResponseWriter, r *http.Request, id string) {
 	user, ok := service.UserFromContext(r.Context())
 	if !ok {
 		FailWithStatus(w, http.StatusUnauthorized, "未登录")
 		return
 	}
-	id := r.PathValue("id")
 	if id == "" {
 		FailWithStatus(w, http.StatusBadRequest, "id 不能为空")
 		return

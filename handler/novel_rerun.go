@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/tigerowo/freedom/model"
 	"github.com/tigerowo/freedom/service"
 )
 
@@ -11,12 +12,13 @@ import (
 
 // RerunShotLayerReq 单分镜重做请求。
 type RerunShotLayerReq struct {
-	RunID  string                          `json:"runId"`
-	ShotID string                          `json:"shotId"`
-	Layer  string                          `json:"layer"`
-	Text   string                          `json:"text,omitempty"`
-	VoiceID string                         `json:"voiceId,omitempty"`
-	Speed  float64                         `json:"speed,omitempty"`
+	RunID   string                          `json:"runId"`
+	ShotID  string                          `json:"shotId"`
+	Layer   string                          `json:"layer"`
+	Text    string                          `json:"text,omitempty"`
+	VoiceID string                          `json:"voiceId,omitempty"`
+	Speed   float64                         `json:"speed,omitempty"`
+	Lines   []model.SubtitleLine            `json:"lines,omitempty"`
 }
 
 // RerunShotLayer POST /api/v1/novel/rerun/shot
@@ -42,6 +44,7 @@ func RerunShotLayer(w http.ResponseWriter, r *http.Request) {
 		Text:    req.Text,
 		VoiceID: req.VoiceID,
 		Speed:   req.Speed,
+		Lines:   req.Lines,
 	}
 	rec, err := service.RerunShotLayer(r.Context(), user.ID, req.RunID, projectID, params)
 	if err != nil {

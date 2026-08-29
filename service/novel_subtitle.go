@@ -160,15 +160,21 @@ func DispatchSubtitleForShot(userID, projectID, shotID, text string, shotDuratio
 	lines := ComputeTimeline(text, shotDurationMs)
 	if len(lines) == 0 {
 		return repository.UpsertShotSubtitle(&model.ShotSubtitle{
-			UserID: userID, ProjectID: projectID, ShotID: shotID,
-			Status: "skipped",
+			ID:        newID("sub"),
+			UserID:    userID,
+			ProjectID: projectID,
+			ShotID:    shotID,
+			Status:    "skipped",
 			UpdatedAt: nowStr,
 		})
 	}
 	return repository.UpsertShotSubtitle(&model.ShotSubtitle{
-		UserID: userID, ProjectID: projectID, ShotID: shotID,
+		ID:        newID("sub"),
+		UserID:    userID,
+		ProjectID: projectID,
+		ShotID:    shotID,
 		LinesJSON: LinesToJSON(lines),
-		Status: "success",
+		Status:    "success",
 		UpdatedAt: nowStr,
 	})
 }
@@ -211,9 +217,12 @@ func UpdateLines(userID, projectID, shotID string, lines []model.SubtitleLine) e
 	}
 	nowStr := time.Now().UTC().Format("2006-01-02T15:04:05.000Z")
 	return repository.UpsertShotSubtitle(&model.ShotSubtitle{
-		UserID: userID, ProjectID: projectID, ShotID: shotID,
+		ID:        newID("sub"),
+		UserID:    userID,
+		ProjectID: projectID,
+		ShotID:    shotID,
 		LinesJSON: LinesToJSON(lines),
-		Status: "success",
+		Status:    "success",
 		UpdatedAt: nowStr,
 	})
 }
