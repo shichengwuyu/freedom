@@ -126,6 +126,17 @@ import {
 import { ConfigLabel, DetailMeta } from "./components/config-label";
 import { VideoShotCard } from "./components/video-shot-card";
 import { VideoShotDetail } from "./components/video-shot-detail";
+import NovelWorkflowLayers from "./components/novel-workflow-layers";
+import NovelSeriesAssetLockPanel from "./components/novel-series-asset-lock-panel";
+import NovelBgmPicker from "./components/novel-bgm-picker";
+import NovelRerunPanel from "./components/novel-rerun-panel";
+import NovelCompositionView from "./components/novel-composition-view";
+import {
+  createNovelWorkflowRun,
+  getNovelWorkflowRun,
+  type NovelWorkflowRun,
+  type NovelWorkflowNode,
+} from "@/services/api/novel_workflow";
 import { audioBufferToWav } from "./lib/audio-wav";
 import { parseScriptToShots } from "./domain/parse-script-to-shots";
 import { blobUrlToDataUrl, getVideoBlob, extractFrame } from "./lib/media-utils";
@@ -248,6 +259,8 @@ export default function NovelPage() {
 
     const [pipelineRunning, setPipelineRunning] = useState(false);
     const [pipelineStatus, setPipelineStatus] = useState("");
+
+
     // pipelinePhase: 4 段流水线阶段标识，配合底部 stepper 渲染。
 // chapter_parse = 章节解析（parseChapters 是同步、几乎瞬时，此阶段可视化靠 UI 自适应完成动画）
 // storyboard    = 文本模型逐章生成分镜剧本
@@ -495,6 +508,58 @@ const [pipelinePhase, setPipelinePhase] = useState<"idle" | "chapter_parse" | "s
         [projects, activeProjectId],
     );
 
+
+
+    // ── novel-workflow v2: workflow run / nodes 状态 ──
+    const [novelRun, setNovelRun] = useState<NovelWorkflowRun | null>(null);
+    const [novelNodes, setNovelNodes] = useState<NovelWorkflowNode[]>([]);
+    const [novelRunId, setNovelRunId] = useState<string | null>(null);
+    const [novelBg, setNovelBg] = useState<{ presetId?: string; customId?: string; volume: number; fadeInMs: number; fadeOutMs: number } | null>(null);
+
+    // 加载或创建 novel workflow run (per-project 1 个 active run)
+    const refreshNovelRun = useCallback(async () => {
+      if (!activeProject) {
+        setNovelRun(null);
+        setNovelNodes([]);
+        setNovelRunId(null);
+        return;
+      }
+      try {
+        const runs = await import("@/services/api/novel_workflow").then((m) =>
+          m.listNovelWorkflowRuns(activeProject.id, 1, 5),
+        );
+        if (runs.runs.length > 0) {
+          const r = runs.runs[0];
+          setNovelRun(r);
+          setNovelRunId(r.id);
+          const data = await getNovelWorkflowRun(r.id);
+          setNovelNodes(data.nodes);
+        } else {
+          const shotIds = (activeProject.shots || []).map((s) => s.id);
+          if (shotIds.length > 0) {
+            const r = await createNovelWorkflowRun({
+              projectId: activeProject.id,
+              mode: "auto",
+              shotIds,
+              configJson: "",
+            });
+            setNovelRun(r);
+            setNovelRunId(r.id);
+            setNovelNodes([]);
+          } else {
+            setNovelRun(null);
+            setNovelNodes([]);
+            setNovelRunId(null);
+          }
+        }
+      } catch (e) {
+        console.error("refresh novel run", e);
+      }
+    }, [activeProject]);
+
+    useEffect(() => {
+      refreshNovelRun();
+    }, [refreshNovelRun]);
     const completedCount = useMemo(
         () => activeProject?.shots.filter((s) => s.status === "success").length || 0,
         [activeProject],
@@ -3597,6 +3662,32 @@ ${scriptContext.slice(0, 20000)}`;
                                 </div>
                             )}
         
+                            {/* novel-workflow v2: 5 层步骤条 + 主资产包 + BGM + 重做面板
+                与 v1 stepper 并存 (v1 = 6 段细粒度 / v2 = 5 层抽象) */}
+                            {activeProject && novelRun && (
+                                <div className="shrink-0 space-y-2">
+                                    <NovelWorkflowLayers
+                                        run={novelRun}
+                                        nodes={novelNodes}
+                                        projectId={activeProject.id}
+                                        onRefresh={refreshNovelRun}
+                                        onMessage={(m) => m.type === "success" ? antMessage.success(m.text) : antMessage.error(m.text)}
+                                    />
+                                    <NovelSeriesAssetLockPanel
+                                        projectId={activeProject.id}
+                                        onChange={(lock) => {
+                                            // 锁状态变化时刷新 workflow run (供 v1 stepper 参考)
+                                            void refreshNovelRun();
+                                        }}
+                                    />
+                                    <NovelBgmPicker
+                                        projectId={activeProject.id}
+                                        value={novelBg ?? undefined}
+                                        onChange={setNovelBg}
+                                    />
+                                </div>
+                            )}
+
                             {/* 6 段流水线 stepper：章节解析 → 分镜剧本 → 提示词 → 生图 → 对应分镜 → 视频
                 比原来的单根 Progress 更直观；阶段高亮、失败红点、已完成/总数均显示 */}
             {(pipelineRunning || parsingStoryboard || pipelinePhase === "video" || pipelinePhase === "done" || pipelinePhase.startsWith("assets_")) && activeProject && (
@@ -3692,6 +3783,39 @@ ${scriptContext.slice(0, 20000)}`;
                             <span className="flex items-center gap-1"><LoaderCircle className="size-3 animate-spin text-stone-400" />{pipelineStatus}</span>
                         </div>
                     )}
+                </div>
+            )}
+
+            {/* novel-workflow v2: 整部成片重做面板 (合成后可用) */}
+            {activeProject && novelRunId && pipelinePhase === "done" && (
+                <div className="shrink-0">
+                    <NovelRerunPanel
+                        runId={novelRunId}
+                        projectId={activeProject.id}
+                        scope="full"
+                        layer="composition"
+                        compositionInput={{
+                            shotVideos: (activeProject.shots || []).map((s) => ({
+                                shotId: s.id,
+                                url: s.videoUrl ?? "",
+                                durationMs: (s.duration ?? 4000),
+                            })),
+                            subtitleStyle: {
+                                font: "黑体",
+                                size: 36,
+                                color: "FFFFFF",
+                                outline: "000000",
+                                outlineWidth: 2,
+                                position: "bottom",
+                                marginBottom: 60,
+                            },
+                            bgmSource: novelBg?.presetId ? { presetId: novelBg.presetId } : {},
+                            bgmVolume: novelBg?.volume ?? 0.3,
+                            bgmFadeInMs: novelBg?.fadeInMs ?? 0,
+                            bgmFadeOutMs: novelBg?.fadeOutMs ?? 0,
+                        }}
+                        onRerunDone={refreshNovelRun}
+                    />
                 </div>
             )}
         
