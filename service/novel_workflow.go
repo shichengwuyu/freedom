@@ -110,6 +110,11 @@ func InitNovelWorkflowNodes(runID string, shotIDs []string) error {
 //   - 找出所有"就绪"（依赖全成功）且 status=未启动的节点
 //   - 派发到通用 task worker
 //   - 自身状态 → 进行中
+//
+// 安全：handler 已校验 run.UserID == user.ID；service 不再重复校验。
+// 注意：service 层其他 Start*Node / Cancel / Retry 也不再重复校验，
+// 因为它们都以 (runID, nodeID) 查表，而 node 一定属于某个 run——只要 runID
+// 在 handler 入口被校验过，node 也就间接校验过。
 func StartNovelWorkflowRun(runID string) error {
 	run, err := repository.GetNovelWorkflowRun(runID)
 	if err != nil || run == nil {
@@ -146,10 +151,15 @@ func StartNovelWorkflowRun(runID string) error {
 }
 
 // StartNovelWorkflowNode 启动单节点（manual 模式 / 单步介入）。
-func StartNovelWorkflowNode(runID, nodeID string) error {
+//
+// 安全：userID 用于纵深防御校验 run 归属（handler 已校验过）。
+func StartNovelWorkflowNode(userID, runID, nodeID string) error {
 	run, err := repository.GetNovelWorkflowRun(runID)
 	if err != nil || run == nil {
 		return errors.New("run not found")
+	}
+	if run.UserID != userID {
+		return errors.New("无权访问该 run")
 	}
 	node, err := repository.GetNovelWorkflowNodeByRunAndNodeID(runID, nodeID)
 	if err != nil || node == nil {
@@ -164,7 +174,16 @@ func StartNovelWorkflowNode(runID, nodeID string) error {
 }
 
 // CancelNovelWorkflowNode 取消单节点。
-func CancelNovelWorkflowNode(runID, nodeID string) error {
+//
+// 安全：userID 用于纵深防御校验 run 归属。
+func CancelNovelWorkflowNode(userID, runID, nodeID string) error {
+	run, err := repository.GetNovelWorkflowRun(runID)
+	if err != nil || run == nil {
+		return errors.New("run not found")
+	}
+	if run.UserID != userID {
+		return errors.New("无权访问该 run")
+	}
 	node, err := repository.GetNovelWorkflowNodeByRunAndNodeID(runID, nodeID)
 	if err != nil || node == nil {
 		return errors.New("node not found")
@@ -187,10 +206,15 @@ func CancelNovelWorkflowNode(runID, nodeID string) error {
 }
 
 // RetryNovelWorkflowNode 重试失败节点。
-func RetryNovelWorkflowNode(runID, nodeID string) error {
+//
+// 安全：userID 用于纵深防御校验 run 归属。
+func RetryNovelWorkflowNode(userID, runID, nodeID string) error {
 	run, err := repository.GetNovelWorkflowRun(runID)
 	if err != nil || run == nil {
 		return errors.New("run not found")
+	}
+	if run.UserID != userID {
+		return errors.New("无权访问该 run")
 	}
 	node, err := repository.GetNovelWorkflowNodeByRunAndNodeID(runID, nodeID)
 	if err != nil || node == nil {

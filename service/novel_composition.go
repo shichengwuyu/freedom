@@ -115,6 +115,10 @@ func ComposeFull(ctx context.Context, task *model.CompositionTask) error {
 	if len(input.ShotVideos) == 0 {
 		return errors.New("ShotVideos 不能为空")
 	}
+	// 安全：白名单校验所有外部 URL 都在预期目录内（防 ffmpeg 读取任意文件）
+	if err := validateCompositionInput(&input); err != nil {
+		return err
+	}
 
 	now := time.Now().UTC().Format("2006-01-02T15:04:05.000Z")
 	task.Status = string(statusRunning)
@@ -191,6 +195,10 @@ func ComposeSubtitleOnly(ctx context.Context, task *model.CompositionTask) error
 	var input CompositionInput
 	if err := json.Unmarshal([]byte(task.InputJSON), &input); err != nil {
 		return fmt.Errorf("parse input: %w", err)
+	}
+	// 安全：白名单校验（与 ComposeFull 保持一致）
+	if err := validateCompositionInput(&input); err != nil {
+		return err
 	}
 
 	outputDir := strings.TrimSpace(config.Cfg.CompositionOutputDir)
@@ -422,4 +430,48 @@ func ffmpegBin() string {
 		return "ffmpeg"
 	}
 	return bin
+}
+
+// validateCompositionInput 校验输入 URL 白名单。
+//
+// 安全：ffmpeg 接收任意路径作为 -i 输入；不允许用户通过 CompositionInput
+// 读取 data/uploads/ data/compositions/ 之外的本地文件。
+// 允许前缀：
+//   - data/uploads/         — 用户上传
+//   - data/compositions/    — 历史合成产物（rerun 引用）
+//   - /app/data/uploads/    — Docker 容器内绝对路径
+//   - /app/data/compositions/
+func validateCompositionInput(input *CompositionInput) error {
+	allowed := []string{
+		"data/uploads/",
+		"data/compositions/",
+		"/app/data/uploads/",
+		"/app/data/compositions/",
+	}
+	check := func(field, url string) error {
+		if url == "" {
+			return nil
+		}
+		// 拒绝绝对 file:// 协议和换行注入
+		if strings.Contains(url, "\n") || strings.Contains(url, "\r") {
+			return fmt.Errorf("%s 包含非法字符", field)
+		}
+		for _, p := range allowed {
+			if strings.HasPrefix(url, p) {
+				return nil
+			}
+		}
+		return fmt.Errorf("%s 路径不在白名单内: %s", field, url)
+	}
+	for i, sv := range input.ShotVideos {
+		if err := check(fmt.Sprintf("shotVideos[%d].url", i), sv.URL); err != nil {
+			return err
+		}
+	}
+	for i, sd := range input.ShotDubbings {
+		if err := check(fmt.Sprintf("shotDubbings[%d].url", i), sd.URL); err != nil {
+			return err
+		}
+	}
+	return nil
 }

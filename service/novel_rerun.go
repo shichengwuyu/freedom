@@ -41,15 +41,25 @@ type RerunShotLayerParams struct {
 //   - layer="video"：v2 不接真实视频生成，仅写重做记录 + 标 running
 //
 // 写一条 RerunRecord（version 自增）。
+//
+// 安全：runID 必须属于 userID（防止 A 拿 B 的 runID 让 B 付钱）；handler 已做一次
+// 校验，service 层再做一次纵深防御。
 func RerunShotLayer(ctx context.Context, userID, runID, projectID string, params RerunShotLayerParams) (*model.RerunRecord, error) {
 	if userID == "" || projectID == "" {
 		return nil, errors.New("userID/projectID required")
+	}
+	if runID == "" {
+		return nil, errors.New("runID required")
 	}
 	if params.ShotID == "" {
 		return nil, errors.New("shotId required")
 	}
 	if params.Layer != "video" && params.Layer != "dubbing" && params.Layer != "subtitle" {
 		return nil, errors.New("layer 必须是 video/dubbing/subtitle")
+	}
+	// 纵深防御：校验 run 归属
+	if run, err := repository.GetNovelWorkflowRun(runID); err != nil || run == nil || run.UserID != userID || run.ProjectID != projectID {
+		return nil, errors.New("run 不存在或无权访问")
 	}
 
 	version, err := repository.NextRerunRecordVersion(userID, projectID, "shot", params.Layer, params.ShotID)
@@ -122,8 +132,15 @@ func RerunFullLayer(ctx context.Context, userID, runID, projectID string, params
 	if userID == "" || projectID == "" {
 		return nil, nil, errors.New("userID/projectID required")
 	}
+	if runID == "" {
+		return nil, nil, errors.New("runID required")
+	}
 	if params.Layer != "subtitle" && params.Layer != "composition" && params.Layer != "full" {
 		return nil, nil, errors.New("layer 必须是 subtitle/composition/full")
+	}
+	// 纵深防御：校验 run 归属
+	if run, err := repository.GetNovelWorkflowRun(runID); err != nil || run == nil || run.UserID != userID || run.ProjectID != projectID {
+		return nil, nil, errors.New("run 不存在或无权访问")
 	}
 
 	version, err := repository.NextRerunRecordVersion(userID, projectID, "full", params.Layer, "")

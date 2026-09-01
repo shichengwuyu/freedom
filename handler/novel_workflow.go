@@ -102,7 +102,7 @@ func StartNovelWorkflowNode(w http.ResponseWriter, r *http.Request, runID, nodeI
 		FailWithStatus(w, http.StatusNotFound, "run 不存在")
 		return
 	}
-	if err := service.StartNovelWorkflowNode(runID, nodeID); err != nil {
+	if err := service.StartNovelWorkflowNode(user.ID, runID, nodeID); err != nil {
 		FailWithStatus(w, http.StatusBadRequest, "启动节点失败: "+err.Error())
 		return
 	}
@@ -121,7 +121,7 @@ func CancelNovelWorkflowNode(w http.ResponseWriter, r *http.Request, runID, node
 		FailWithStatus(w, http.StatusNotFound, "run 不存在")
 		return
 	}
-	if err := service.CancelNovelWorkflowNode(runID, nodeID); err != nil {
+	if err := service.CancelNovelWorkflowNode(user.ID, runID, nodeID); err != nil {
 		FailWithStatus(w, http.StatusBadRequest, "取消节点失败: "+err.Error())
 		return
 	}
@@ -140,7 +140,7 @@ func RetryNovelWorkflowNode(w http.ResponseWriter, r *http.Request, runID, nodeI
 		FailWithStatus(w, http.StatusNotFound, "run 不存在")
 		return
 	}
-	if err := service.RetryNovelWorkflowNode(runID, nodeID); err != nil {
+	if err := service.RetryNovelWorkflowNode(user.ID, runID, nodeID); err != nil {
 		FailWithStatus(w, http.StatusBadRequest, "重试节点失败: "+err.Error())
 		return
 	}

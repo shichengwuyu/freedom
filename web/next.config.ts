@@ -16,6 +16,14 @@ export default function nextConfig(phase: string): NextConfig {
     return {
         output: "standalone",
         allowedDevOrigins: isDev ? ["*.*.*.*"] : [],
+        webpack: (config) => {
+            config.resolve = config.resolve || {};
+            config.resolve.alias = {
+                ...(config.resolve.alias || {}),
+                "@": new URL("./src", import.meta.url).pathname,
+            };
+            return config;
+        },
         typescript: {
             ignoreBuildErrors: false,
         },

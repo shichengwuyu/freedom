@@ -52,6 +52,8 @@ func New() *gin.Engine {
 	api.POST("/ai/direct-request", gin.WrapF(handler.PrepareDirectAIRequest))
 	api.GET("/license/purchase-config", gin.WrapF(handler.LicensePurchaseConfig))
 	api.GET("/announcements/latest", gin.WrapF(handler.LatestAnnouncements))
+	// novel-workflow v2：公开 BGM 预设列表(匿名可访问,handler 内部不读 user ctx)
+	api.GET("/bgm/presets", gin.WrapF(handler.ListBgmPresets))
 	v1 := api.Group("/v1", middleware.UserAuth)
 	v1.POST("/images/generations", gin.WrapF(handler.AIImagesGenerations))
 	v1.POST("/images/edits", gin.WrapF(handler.AIImagesEdits))
@@ -94,7 +96,8 @@ func New() *gin.Engine {
 	v1.GET("/novel/subtitle", gin.WrapF(handler.GetShotSubtitle))   // 旧路径, 单条（?projectId=&shotId=）
 	v1.GET("/novel/subtitles", gin.WrapF(handler.ListShotSubtitles)) // 列表（?projectId=）
 	// novel-workflow v2：bgm-layer
-	v1.GET("/bgm/presets", gin.WrapF(handler.ListBgmPresets))    // 公开
+	// /bgm/presets 公开:挂在 /api 根组,允许匿名访问(handler 内部不读 user ctx)。
+	// /bgm/custom 用户态:挂在 v1 组,需要登录才能查看/上传/删除自己上传的 BGM。
 	v1.GET("/bgm/custom", gin.WrapF(handler.ListBgmCustoms))
 	v1.POST("/bgm/custom/upload", gin.WrapF(handler.UploadBgmCustom))
 	v1.DELETE("/bgm/custom/:id", func(c *gin.Context) {
