@@ -134,6 +134,34 @@ func New() *gin.Engine {
 	v1.PUT("/novel/series-asset-lock", gin.WrapF(handler.UpdateSeriesAssetLock))
 	v1.POST("/novel/series-asset-lock/lock", gin.WrapF(handler.LockSeriesAssetLock))
 	v1.POST("/novel/series-asset-lock/unlock", gin.WrapF(handler.UnlockSeriesAssetLock))
+	// 小说创作工作台（v1）
+	v1.GET("/novel-write/sessions", gin.WrapF(handler.ListNovelWriteSessions))
+	v1.POST("/novel-write/sessions", gin.WrapF(handler.CreateNovelWriteSession))
+	v1.PATCH("/novel-write/sessions/:id", func(c *gin.Context) {
+		handler.UpdateNovelWriteSession(c.Writer, c.Request, c.Param("id"))
+	})
+	v1.DELETE("/novel-write/sessions/:id", func(c *gin.Context) {
+		handler.DeleteNovelWriteSession(c.Writer, c.Request, c.Param("id"))
+	})
+	v1.GET("/novel-write/sessions/:id/messages", func(c *gin.Context) {
+		handler.ListNovelWriteMessages(c.Writer, c.Request, c.Param("id"))
+	})
+	v1.POST("/novel-write/sessions/:id/messages", func(c *gin.Context) {
+		handler.SendNovelWriteMessage(c.Writer, c.Request, c.Param("id"))
+	})
+	v1.POST("/novel-write/sessions/:id/messages/continue", func(c *gin.Context) {
+		handler.ContinueNovelWriteMessage(c.Writer, c.Request, c.Param("id"))
+	})
+	v1.GET("/novel-write/sessions/:id/prompt", func(c *gin.Context) {
+		handler.GetNovelWritePrompt(c.Writer, c.Request, c.Param("id"))
+	})
+	v1.PUT("/novel-write/sessions/:id/prompt", func(c *gin.Context) {
+		handler.PutNovelWritePrompt(c.Writer, c.Request, c.Param("id"))
+	})
+	v1.POST("/novel-write/sessions/:id/export", func(c *gin.Context) {
+		handler.ExportNovelWriteStoryboard(c.Writer, c.Request, c.Param("id"))
+	})
+	v1.GET("/novel-write/exports", gin.WrapF(handler.ListNovelWriteExports))
 	v1.DELETE("/user-tokens/:id", func(c *gin.Context) {
 		handler.DeleteUserTokenHandler(c.Writer, c.Request)
 	})

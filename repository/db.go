@@ -96,6 +96,10 @@ func DB() (*gorm.DB, error) {
 			&model.RerunRecord{},
 			// novel-workflow v2：series-asset-lock (漫剧级资产锁定)
 			&model.SeriesAssetLock{},
+			// 小说创作工作台（v1）
+			&model.NovelWriteSession{},
+			&model.NovelWriteMessage{},
+			&model.NovelWriteExport{},
 		)
 	})
 	return db, dbErr
