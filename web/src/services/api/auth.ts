@@ -11,6 +11,7 @@ export type AuthUser = {
     avatarUrl: string;
     role: UserRole;
     balanceCents: number;
+    groupId: string; // Sprint 3：当前用户组
     createdAt: string;
     updatedAt: string;
 };

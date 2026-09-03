@@ -38,11 +38,13 @@ RUN chmod +x /app/docker-entrypoint.sh
 COPY --from=web-build /app/web/public /app/web/public
 COPY --from=web-build /app/web/.next/standalone /app/web
 COPY --from=web-build /app/web/.next/static /app/web/.next/static
+# novel-workflow v2：系统预设 BGM 库（8 首选曲，mp3 缺失不阻塞启动）
+COPY assets/bgm-presets /app/assets/bgm-presets
 ENV NODE_ENV=production
 ENV HOSTNAME=0.0.0.0
 ENV PORT=3000
 ENV PROMPT_DATA_DIR=/app/data/prompts
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates wget && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates wget ffmpeg && rm -rf /var/lib/apt/lists/* && ffmpeg -version | head -1
 # 运行时数据目录的预先建好 — mount 进来时由 deploy/hk/build-deploy.sh 把 host 端目录 chown 到容器内
 # appuser (uid=999) 以避免容器内进程写日志/上传时 permission denied（容器内 app 进程以非 root 跑）。
 RUN mkdir -p /app/data/prompts /app/data/logs/ai-calls /app/data/uploads /app/data/reference-media

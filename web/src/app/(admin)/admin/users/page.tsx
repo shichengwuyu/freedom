@@ -219,6 +219,24 @@ export default function AdminUsersPage() {
                                 <Select options={statusOptions} />
                             </Form.Item>
                         </Col>
+                        {/* Sprint 3：用户组选择（Sprint 3 暂 hardcode 4 个内置 group；Sprint 3.5 改成从 /api/pricing 拉） */}
+                        <Col span={12}>
+                            <Form.Item
+                                name="groupId"
+                                label="用户组"
+                                extra="Sprint 3 阶梯定价：default / plus / pro / enterprise"
+                            >
+                                <Select
+                                    allowClear
+                                    options={[
+                                        { label: "默认 (default)", value: "default" },
+                                        { label: "PLUS (plus)", value: "plus" },
+                                        { label: "PRO (pro)", value: "pro" },
+                                        { label: "Enterprise (enterprise)", value: "enterprise" },
+                                    ]}
+                                />
+                            </Form.Item>
+                        </Col>
                     </Row>
                     {editingUser?.id ? (
                         <>

@@ -79,6 +79,27 @@ func DB() (*gorm.DB, error) {
 			&model.UserToken{},
 			// Sprint 3：用户组（阶梯定价维度）
 			&model.UserGroup{},
+			// Sprint 4：通用 task 模型（新能力入口；不替代 4 套旧 task 表）
+			&model.Task{},
+			// novel-workflow v2：工作流编排层（5 层 + 节点状态机）
+			&model.NovelWorkflowRun{},
+			&model.NovelWorkflowNode{},
+			// novel-workflow v2：shot-dubbing-node
+			&model.ShotDubbing{},
+			// novel-workflow v2：shot-subtitle-node
+			&model.ShotSubtitle{},
+			// novel-workflow v2：bgm-layer
+			&model.BgmCustom{},
+			// novel-workflow v2：composition-layer
+			&model.CompositionTask{},
+			// novel-workflow v2：novel-rerun-layer (核心 UX: 重做历史)
+			&model.RerunRecord{},
+			// novel-workflow v2：series-asset-lock (漫剧级资产锁定)
+			&model.SeriesAssetLock{},
+			// 小说创作工作台（v1）
+			&model.NovelWriteSession{},
+			&model.NovelWriteMessage{},
+			&model.NovelWriteExport{},
 		)
 	})
 	return db, dbErr

@@ -46,6 +46,8 @@ description: 当前后端主要数据表与字段说明
 - `user_vendor_accounts`（用户绑定供应商账户，详见同文档 §3.2）
 - `vendor_api_samples`（浏览器插件嗅探的供应商内部接口样本，UpDream/NewWow 无开放平台时用于后端学习接口形状）
 - `user_tokens`（Sprint 1.1 引入：用户自建 OpenAI 兼容 sk- API Key，详见下文 §user_tokens）
+- `user_groups`（Sprint 3 引入：用户组表，详见下文 §user_groups）
+- `tasks`（Sprint 4 引入：通用任务表，详见下文 §tasks）
 
 后续新增表时再同步补充本文档，未实际使用的规划表不提前写入。
 
@@ -513,3 +515,60 @@ S3/R2 与 WebDAV 共用的媒体文件索引表，不保存画布、素材列表
 3. `Authorization: Bearer <jwt>` → `service.CurrentAuthUser`（兼容旧客户端）
 
 **关联字段**：`ai_call_logs.token_id` 在 Sprint 1.1 加入，外键概念上指向 `user_tokens.id`（无 DB 外键约束，便于跨表清理）。`balance_logs.extra` 的 JSON 也会带 `tokenId` 字段。
+
+### user_groups
+
+用户组表（Sprint 3 引入）。内置 4 个 group（default / plus / pro / enterprise），启动期 `service.SeedDefaultUserGroups` 自动 seed。
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `id` | varchar(64) | 主键；建议值：default / plus / pro / enterprise（自定义 group 用更具体命名） |
+| `name` | varchar(64) | 内部名（uniqueIndex） |
+| `display_name` | varchar(64) | 前端展示名（"默认" / "PLUS" / "PRO" / "Enterprise"） |
+| `sort` | int | 排序（升序） |
+| `is_default` | bool | 是否为默认组（"default" 必为 true） |
+| `is_active` | bool | 是否启用（false 时公开 pricing 跳过该 group） |
+| `remark` | varchar(255) | 备注 |
+| `created_at` | time.Time | 创建时间 |
+| `updated_at` | time.Time | 更新时间 |
+
+**关联字段**：`users.group_id` 外键概念上指向 `user_groups.id`（无 DB 外键约束，便于 group 删除时迁移）。`ModelCost.GroupPricingJSON`（JSON 文本）按 group ID 配置 per-model per-group 倍率覆盖。`PrivateSetting.GroupRatios`（JSON map）配置 group 维度统一倍率（缺省 1.0）。
+
+**计费公式**：`cents = baseUnit * GetGroupRatio(groupID) * ModelCost.GetGroupPricingRatio(groupID)`，向下取整。
+
+### tasks
+
+通用任务表（Sprint 4 引入）。用于 Sprint 4 之后**新增的能力**（agent task / batch task / image batch）；**不替代**现有 4 套专用 task 表（`video_tasks` / `canvas_image_tasks` / `canvas_audio_tasks` / `storyboard_tasks`）。
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `id` | string | 主键 |
+| `user_id` | string | 用户 ID，索引 |
+| `type` | string | 任务类型（video / image / audio / storyboard / image_batch / asset_batch），索引 |
+| `capability` | string | text/image/video/audio，冗余索引便于 admin 筛选 |
+| `status` | string | pending / running / success / failure / canceled，索引 |
+| `progress` | int | 0-100 |
+| `vendor_type` | string | ""=official / libtv / updream / newwow |
+| `model_name` | string | 模型名，索引 |
+| `channel_id` | string | 官方渠道 ID（vendor 模式为空） |
+| `key_index` | int | 多 key 轮询索引 |
+| `payload_json` | longtext | 输入 |
+| `result_json` | longtext | 输出 |
+| `error_message` | text | 失败摘要 |
+| `attempts` | int | 已尝试次数 |
+| `max_attempts` | int | 最大尝试次数（默认 3） |
+| `cost_cents` | int | 扣费金额（分） |
+| `hold_id` | string | 关联 BalanceHold ID，索引 |
+| `created_at` | time.Time | 创建时间，索引 |
+| `updated_at` | time.Time | 更新时间 |
+| `started_at` | time.Time | 首次 Submit 成功时间 |
+| `finished_at` | time.Time | 终态时间 |
+| `last_polled_at` | time.Time | 最近一次 Poll 时间 |
+
+**通用 worker 框架**（`service/task_worker.go`）：5s 轮询 `tasks` 表的 `pending` / `running` 记录，按 `type` 查注册的 `TaskHandler` 处理。状态机：
+
+- `pending` → handler.Submit() → 成功改 `running`；失败改 `failure` + 退 hold
+- `running` → handler.Poll() → 终态时 settle/cancel hold
+- `attempts > maxAttempts` → 自动 `failure` + 退 hold
+
+**handler 注册**：main.go 启动期或 `init()` 里调 `service.RegisterTaskHandler(typeStr, handlerImpl)`。完整可复制的 handler 模板见 `service/task_handler_example.go`（仅测试 / demo 用）。

@@ -1,0 +1,71 @@
+{
+  "version": 1,
+  "description": "novel 工作流系统预设 BGM 库（v2 引入）。每个条目对应一首 mp3 + 一组元数据。",
+  "note": "mp3 文件待用户从免版权 BGM 库（如 FreePD / Pixabay Music / YouTube Audio Library）下载后放入本目录，文件名必须与 presets[].file 一致。系统启动时若 mp3 缺失则该预设不展示，但不影响其他预设。",
+  "presets": [
+    {
+      "id": "gufeng-1",
+      "title": "古风·山水",
+      "tags": ["古风", "舒缓", "国风"],
+      "file": "gufeng-1.mp3",
+      "duration_seconds": 180,
+      "description": "古琴 + 笛声，节奏舒缓，适合山水场景 / 对话戏"
+    },
+    {
+      "id": "gufeng-tense-1",
+      "title": "古风·紧张",
+      "tags": ["古风", "紧张", "战斗"],
+      "file": "gufeng-tense-1.mp3",
+      "duration_seconds": 150,
+      "description": "鼓点 + 弦乐急促推进，适合追杀 / 战斗场景"
+    },
+    {
+      "id": "dushi-1",
+      "title": "都市·轻快",
+      "tags": ["都市", "轻快", "日常"],
+      "file": "dushi-1.mp3",
+      "duration_seconds": 200,
+      "description": "钢琴 + 轻鼓点，适合现代都市日常 / 恋爱场景"
+    },
+    {
+      "id": "dushi-tense-1",
+      "title": "都市·悬疑",
+      "tags": ["都市", "悬疑", "紧张"],
+      "file": "dushi-tense-1.mp3",
+      "duration_seconds": 160,
+      "description": "低音弦乐 + 慢节奏电子，适合推理 / 悬疑场景"
+    },
+    {
+      "id": "wenxin-1",
+      "title": "温馨·回忆",
+      "tags": ["温馨", "舒缓", "回忆"],
+      "file": "wenxin-1.mp3",
+      "duration_seconds": 170,
+      "description": "吉他 + 钢琴，适合温馨 / 回忆 / 告白场景"
+    },
+    {
+      "id": "shanggan-1",
+      "title": "伤感·离别",
+      "tags": ["伤感", "舒缓", "离别"],
+      "file": "shanggan-1.mp3",
+      "duration_seconds": 190,
+      "description": "大提琴 + 钢琴，适合生死离别 / 悲剧结尾"
+    },
+    {
+      "id": "shishi-1",
+      "title": "史诗·高潮",
+      "tags": ["史诗", "紧张", "高潮"],
+      "file": "shishi-1.mp3",
+      "duration_seconds": 220,
+      "description": "管弦乐 + 合唱，适合大场面 / 决战 / 胜利"
+    },
+    {
+      "id": "huankuai-1",
+      "title": "欢快·日常",
+      "tags": ["欢快", "轻快", "日常"],
+      "file": "huankuai-1.mp3",
+      "duration_seconds": 165,
+      "description": "尤克里里 + 拍手，适合轻松日常 / 喜剧场景"
+    }
+  ]
+}

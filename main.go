@@ -20,6 +20,13 @@ func main() {
 	if err := config.Load(); err != nil {
 		log.Fatal(err)
 	}
+	// novel-workflow v2：ffmpeg 启动 smoke check。
+	// ffmpeg 缺失只 warn（不阻塞），dev 机器可继续开发；合成 worker 在需要时才报错。
+	if out, err := service.CheckFfmpegAvailable(config.Cfg.FfmpegBinaryPath); err != nil {
+		log.Printf("[WARN] ffmpeg 不可用 (%v)：成片合成功能将不可用。Docker 镜像已预装 ffmpeg，本地 dev 请安装并设置 FFMPEG_BINARY_PATH", err)
+	} else {
+		log.Printf("[INFO] ffmpeg 可用: %s", out)
+	}
 	// 启动期触发 DB 连接 + AutoMigrate，避免首次请求才暴露 DB 故障。
 	if _, err := repository.DB(); err != nil {
 		log.Fatal("数据库初始化失败: ", err)
@@ -36,6 +43,11 @@ func main() {
 	if err := service.SeedDefaultUserGroups(); err != nil {
 		log.Printf("seed default user groups failed: %v", err)
 	}
+	// Sprint 4：通用 task 后台 worker（5s 轮询 pending/running task）
+	// Sprint 4 暂不注册任何 handler；worker 启动后空闲不报错
+	// 新能力接入：调 service.RegisterTaskHandler(typeStr, handlerImpl) 即可
+	// 参考实现：service/task_handler_example.go
+	service.StartTaskWorker()
 	service.StartCanvasProjectCleanupScheduler()
 	service.StartBalanceHoldSweepScheduler()
 	service.StartModelStatusScheduler()
@@ -43,6 +55,14 @@ func main() {
 	service.StartAffiliateSettlementScheduler()
 	handler.StartVideoTaskPoller()
 	handler.StartStoryboardTaskRunner()
+	// novel-workflow v2：启动工作流状态聚合 worker（5s 轮询）
+	service.StartNovelWorkflowWorker(context.Background())
+	// novel-workflow v2：跨切清理 cron（30 天过期成片 + rerun record）
+	service.StartNovelWorkflowCleanupScheduler()
+	// novel-workflow v2：加载 BGM 预设（manifest + mp3 校验）
+	if err := service.LoadBgmPresets(); err != nil {
+		log.Printf("load bgm presets failed: %v", err)
+	}
 
 	// 优雅关闭：捕获 SIGINT/SIGTERM，等待 in-flight 请求完成再退出。
 	srv := &http.Server{

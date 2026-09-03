@@ -40,6 +40,20 @@ type Config struct {
 	// VendorCredentialKey 用于 AES-GCM 加密供应商凭证（Cookie / AccessToken）。
 	// 留空时自动生成随机密钥（dev 兜底）；生产必须配置固定密钥，否则重启后无法解密已存凭证。
 	VendorCredentialKey string `env:"VENDOR_CREDENTIAL_KEY"`
+	// === novel-workflow v2 引入 ===
+	// FfmpegBinaryPath ffmpeg 可执行文件路径；docker 镜像默认装在 /usr/bin/ffmpeg；dev 机器可自定义。
+	FfmpegBinaryPath string `env:"FFMPEG_BINARY_PATH" envDefault:"ffmpeg"`
+	// CompositionOutputDir 成片 mp4 输出目录（dev 模式）；生产走对象存储。
+	CompositionOutputDir string `env:"COMPOSITION_OUTPUT_DIR" envDefault:"data/compositions"`
+	// CompositionWorkerCount 成片合成 worker 池大小。
+	CompositionWorkerCount int `env:"COMPOSITION_WORKER_COUNT" envDefault:"2"`
+	// TtsProvider TTS 提供方（mimo / volcano / openai / elevenlabs）；仅 shot-dubbing-node 用。
+	TtsProvider string `env:"TTS_PROVIDER" envDefault:"mimo"`
+	// EnableSeriesAssetLock 是否启用剧集级资产锁定（series-asset-lock capability）。
+	// 默认 false——v2 行为仅在用户主动锁定时生效，不影响未锁定项目的灵活行为。
+	EnableSeriesAssetLock bool `env:"ENABLE_SERIES_ASSET_LOCK" envDefault:"false"`
+	// BgmPresetsDir 系统预设 BGM 目录（容器内默认 /app/assets/bgm-presets，dev 可指向源码目录）。
+	BgmPresetsDir string `env:"BGM_PRESETS_DIR" envDefault:"/app/assets/bgm-presets"`
 }
 
 var Cfg Config

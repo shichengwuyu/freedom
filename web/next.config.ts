@@ -16,6 +16,16 @@ export default function nextConfig(phase: string): NextConfig {
     return {
         output: "standalone",
         allowedDevOrigins: isDev ? ["*.*.*.*"] : [],
+        // Next.js 16 默认 Turbopack；保留 webpack alias（兼容 dev 模式）并显式声明 turbopack 配置。
+        webpack: (config) => {
+            config.resolve = config.resolve || {};
+            config.resolve.alias = {
+                ...(config.resolve.alias || {}),
+                "@": new URL("./src", import.meta.url).pathname,
+            };
+            return config;
+        },
+        turbopack: {},
         typescript: {
             ignoreBuildErrors: false,
         },

@@ -7,6 +7,131 @@ description: 当前项目后续值得处理的事项
 
 本文档用来记录当前项目后续比较值得处理的事项。
 
+## 方向调整：不做限速 / 不做会员等级 / 只做卡密
+
+2026-08-29 用户明确调整方向：
+- ❌ **不做 quota 限速**（"有钱就能一直调用"）
+- ❌ **不做会员等级 / group 定价**（Sprint 3 阶梯定价保留 —— 因为已经实现；但不做 monthly quota / 升级 / 续费 / 订阅相关）
+- ✅ **只做卡密**（LicenseKey 兑换余额）
+
+Sprint 3 UserGroup 字段保留（已经实现且无破坏性）；但后续 Sprint 5+ 不再往 group 维度加 quota / subscription / 自动续费。
+
+### 卡密现状（2026-08-29 摸代码发现已经全部实现）
+
+摸代码发现 Freedom 的**卡密能力早已完整**（todo.md 顶部"已完成：支付系统重构"段落里有提）：
+
+- **数据模型**：`model/license_key.go` 有 `LicenseKey`（id / key / faceValueCents / status / usedBy / usedAt / batchName / createdBy）+ `LicenseRedeemLog`（id / licenseKeyId / keyMasked / userId / userName / faceValueCents / createdAt）
+- **admin 接口**（`handler/admin_license_key.go`）：`POST /api/admin/license-keys/import`（批量导入）、`GET /api/admin/license-keys`（列表）、`POST /api/admin/license-keys/generate`（自动生成 + TXT 下载）
+- **用户接口**（`router/router.go:53/153/154`）：`GET /api/license/purchase-config`（公开）、`POST /api/v1/license/redeem`（兑换）、`GET /api/v1/license/redeem-logs`（我的兑换记录）
+- **service**：`service/license_key.go` 有 `ImportLicenseKeys` / `RedeemLicenseKey` / `MyRedeemLogs` / `AdminListLicenseKeys` 等
+- **前端**：`web/src/app/(user)/wallet/page.tsx` 已有"兑换" tab + 卡密兑换表单
+
+**Sprint 5 quota 改造已撤销**（`model/setting.go::PrivateSetting.GroupQuotas` 字段已删；其他 quota 相关文件未创建）。
+
+**没有可做的新增卡密功能**——除非有具体诉求（比如"扫码支付自动发卡"、"卡密有效期"、"卡密绑定用户"等）。等你给具体诉求再单独开 Sprint。
+
+Sprint 4 落地了通用 Task 模型 + 通用 worker 框架，但没有真正接管任何 task 也没注册任何 handler。Sprint 4.2 用最小代价收尾：
+
+- **新建** `service/task_handler_example.go` —— 完整可复制的 `TaskHandler` 实现模板（image_batch 场景），含详细中文注释（"为什么这么写"）。未来 Sprint 5/6 直接 fork 这个文件。新增 helper `RegisterExampleTaskHandler()` 用于显式 opt-in
+- **修改** `main.go` `StartTaskWorker()` 启动时加注释说明："新能力接入 = 调 RegisterTaskHandler"
+- **文档**：`docs/backend/backend-database.md` 加 `tasks` 表完整结构 + 通用 worker 状态机设计 + handler 注册指南
+
+**为什么不接现有 video poller 到通用 worker**：
+- 现有 `service/video_task.go::StartVideoTaskPoller` 已经是 new-api 形态的成熟 poller（信号量并发限制、panic 兜底、清理过期、进度唤醒）
+- 改造业务行为完全不变，风险大收益小
+- 留 Sprint 4.3（如果做）再抽象
+
+**Why**：
+- 零回归风险
+- 给未来 Sprint 5（quota 限速）/ Sprint 6（实时进度推送）提供"接入指南"
+- Sprint 4 真正收尾
+
+**How to apply（后续 Sprint 怎么用）**：
+- Sprint 5 quota 限速：fork example handler → 在 `Submit` 之前查 user 当月用量 → 超限返 `failure` + `error_message="quota exceeded"`
+- Sprint 6 实时进度：fork example handler → 在 `Poll` 时通过 SSE 推 `progress` 变化
+- 任何新能力：调 `service.RegisterTaskHandler(typeStr, handlerImpl)` → 创建 task → 通用 worker 自动接管
+
+## 误判澄清：Sprint 4 plan 中"UpDream/NewWow 视频 vendor 缺口"和"canvas_image_task 没接 Sprint 2 selector"已不成立
+
+实施 Sprint 4.1 时实际摸代码发现：
+
+1. **UpDream 视频 vendor 三个方法已完整实现**（`service/vendor_updream.go`）：
+   - `SubmitVideo` (line 801)：调 `/api/ai/generate-video/async` 提交任务
+   - `GetTaskStatus` (line 704)：调 `/api/ai/task/{id}` 轮询
+   - `GenerateVideo` (line 994)：同步等待视频生成
+2. **NewWow 视频 vendor 三个方法同样已实现**（`service/vendor_newwow.go:553/630`）：canvas→shot→generate-video 三步流程 + `/agent/story-canvas/batch-query-status` 轮询
+3. **canvas_image_task 已走 Sprint 2 selector**：路径是 `handler/canvas_task.go::executeCanvasAIRequest` (line 402) 直接调 `proxyAIRequest`，而 `proxyAIRequest` 在 Sprint 2 改造中已包含 `runRemoteChannelWithRetry` —— **canvas_image_task 自动获得了 retry + failover + cooldown 能力**
+
+P0 报告（`[Script-to-Video Vendor Mismatch]`）里 UpDream/NewWow 视频"TODO"实际**已在 Sprint 1.x 期间补完**（之前没仔细看代码就标 TODO 是 plan 误判）。
+
+**Sprint 4.1 不需要做实际改动**。下面"进行中：Sprint 4 通用 Task 模型（部分完成）"状态不变。
+
+## 进行中：Sprint 4 通用 Task 模型（部分完成）
+
+Sprint 4 是工作量较大的 Sprint（涉及 8 个新文件 + 4 个修改）。本 Sprint 已完成"骨头"部分：
+
+- **数据层**：
+  - `model/task.go` 新增：通用 `Task` 模型 + 6 个 type 常量 + 5 个 status 常量
+  - `repository/task.go` 新增：5 个 CRUD 函数（Save / GetByID / ListPendingTasks / ListUserTasks / UpdateTaskStatus / IncrementTaskAttempts）
+  - AutoMigrate 加 `&model.Task{}`
+- **后端 worker**：
+  - `service/task_worker.go` 新增：`TaskHandler` 接口（Submit / Poll / Cancel）+ `RegisterTaskHandler` 注册 + `StartTaskWorker` 后台循环 + 状态机
+  - main.go 启动期调 `StartTaskWorker`
+- **API**：
+  - `handler/task.go` 新增：`UserTasks` handler
+  - `router/router.go` 加 `GET /api/v1/tasks`
+
+### 留到 Sprint 4.1（后续）
+- 补 UpDream / NewWow 视频 vendor 适配器（`SubmitVideo` / `GenerateVideo` / `GetTaskStatus`）—— 嗅探契约缺失，先返 `ErrTaskNotSupported` fallback 官方
+- canvas_image_task 改用 Sprint 2 selector + retry（当前是单次 select）
+- video_task poller 改用通用 worker 框架
+- 注册 videoHandler 让通用 worker 真正工作
+
+### 留到 Sprint 4.2（更后续）
+- 4 套旧 task 表（video_tasks / canvas_image_tasks / canvas_audio_tasks / storyboard_tasks）数据迁移到通用 tasks 表
+- 前端 type 同步升级（业务级破坏；需要前端代码层面配合）
+- admin 通用 task 查询（`/api/admin/tasks`）
+
+## 已完成：Sprint 3 UserGroup 阶梯定价
+
+把 Freedom 从"一刀切"定价升级为 new-api 形态的"用户组 + 倍率"商业化基础。
+
+- **数据层**：
+  - 新表 `user_groups`（`model/user_group.go`）：内置 4 个 group（default / plus / pro / enterprise），AutoMigrate 自动建表
+  - `model/user.go::User` 加 `GroupID string`（db column + AuthUser DTO）
+  - `model/setting.go::ModelCost` 加 `GroupPricingJSON`（per-model per-group 倍率覆盖）+ `GetGroupPricingRatio` helper
+  - `model/setting.go::PrivateSetting` 加 `GroupRatios map[string]float64`（group 维度统一倍率）
+- **后端业务**：
+  - `service/user_group.go` 新增：`SeedDefaultUserGroups`（启动期 seed）+ `ListActiveUserGroups`
+  - `service/pricing.go` 新增：`GetGroupRatio(groupID)` + `CalcUnitCostCents(model, groupID)`（计费公式：base * groupRatio * modelGroupRatio，向下取整）+ `ListPublicPricing`（公开 pricing 页数据）
+  - `handler/pricing.go` 新增：`GetPricing`（公开接口，不需登录）
+  - `service/auth.go` 新用户默认 `GroupID = "default"`；admin 改用户时支持透传
+  - `handler/auth.go::saveUserRequest` 加 `GroupID` 字段
+  - `main.go` 启动期调 `SeedDefaultUserGroups`
+  - `router/router.go` 加 `GET /api/pricing`
+  - 4 个 handler 计费点（`handler/ai.go` / `handler/video_task.go` / `service/workflow_agent.go`）改用 `CalcUnitCostCents` 算 per-unit cost
+- **前端**：
+  - `services/api/auth.ts::AuthUser` 加 `groupId`
+  - `services/api/admin.ts::AdminUser` 加 `groupId`
+  - `services/api/pricing.ts` 新增：`fetchPricing` / `listActiveUserGroups` + 4 个 TypeScript 类型
+  - `admin/users/page.tsx` 编辑表单加 `groupId` Select（4 个内置 group）
+  - `user/wallet/page.tsx` 加第 5 个 tab "价目表"（`DollarOutlined` 图标）
+  - `user/wallet/components/pricing-table.tsx` 新增：价目表组件（group 列高亮 + 折扣 Tag 着色）
+- **兼容性**：
+  - `user.GroupID = ""` 兼容（空 → 走 default，倍率 1.0）
+  - 老配置无 `GroupRatios` 字段时 `GetGroupRatio` 返回 1.0（安全默认）
+  - 老配置无 `ModelCost.GroupPricingJSON` 时 `GetGroupPricingRatio` 返回 1.0
+  - 现有 vendor 路径（`dispatchVendorProxy`）**不**走 group pricing
+  - `ConsumeUserBalanceWithHold` 函数签名**不**变（cents 外面算好传进来）
+
+### 后续可优化（Sprint 3.5 候选）
+- admin 完整 UserGroup CRUD UI（当前只 hardcode 4 个内置 group）
+- 余额通知（"余额 < 阈值"推送）
+- 卡密兑换升级 PLUS（admin 创建卡密时指定 group）
+- "升 PLUS"按钮（用户自助购买，扫码支付 + 自动升级 group）
+- 用户配额 / 月卡（按 group 限制每月生成次数）
+- admin groupRatios 编辑 UI（当前 admin 改 settings.private JSON）
+
 ## 已完成：Sprint 2.6 admin 渠道健康度页面
 
 把 Sprint 2 落地的"渠道失败诊断"能力可视化到 admin 页面，让 admin 一眼看到哪些 channel 在抽风 / 哪些在冷却 / 影响哪些模型。

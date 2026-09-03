@@ -52,6 +52,8 @@ func New() *gin.Engine {
 	api.POST("/ai/direct-request", gin.WrapF(handler.PrepareDirectAIRequest))
 	api.GET("/license/purchase-config", gin.WrapF(handler.LicensePurchaseConfig))
 	api.GET("/announcements/latest", gin.WrapF(handler.LatestAnnouncements))
+	// novel-workflow v2：公开 BGM 预设列表(匿名可访问,handler 内部不读 user ctx)
+	api.GET("/bgm/presets", gin.WrapF(handler.ListBgmPresets))
 	v1 := api.Group("/v1", middleware.UserAuth)
 	v1.POST("/images/generations", gin.WrapF(handler.AIImagesGenerations))
 	v1.POST("/images/edits", gin.WrapF(handler.AIImagesEdits))
@@ -61,6 +63,105 @@ func New() *gin.Engine {
 	// Sprint 1.1：用户自建 API Key（OpenAI 兼容 sk- 格式）CRUD
 	v1.POST("/user-tokens", gin.WrapF(handler.CreateUserTokenHandler))
 	v1.GET("/user-tokens", gin.WrapF(handler.ListUserTokensHandler))
+	// Sprint 4：通用 task 查询（仅 Sprint 4 之后新增能力的 task；旧 4 套表各自有接口）
+	v1.GET("/tasks", gin.WrapF(handler.UserTasks))
+	// novel-workflow v2：工作流编排层 HTTP API
+	v1.POST("/novel/workflows", gin.WrapF(handler.CreateNovelWorkflowRun))
+	v1.GET("/novel/workflows", gin.WrapF(handler.ListNovelWorkflowRuns))
+	v1.GET("/novel/workflows/:id", func(c *gin.Context) {
+		handler.GetNovelWorkflowRun(c.Writer, c.Request, c.Param("id"))
+	})
+	v1.POST("/novel/workflows/:id/start", func(c *gin.Context) {
+		handler.StartNovelWorkflowRun(c.Writer, c.Request, c.Param("id"))
+	})
+	v1.POST("/novel/workflows/:id/nodes/:nodeId/start", func(c *gin.Context) {
+		handler.StartNovelWorkflowNode(c.Writer, c.Request, c.Param("id"), c.Param("nodeId"))
+	})
+	v1.POST("/novel/workflows/:id/nodes/:nodeId/cancel", func(c *gin.Context) {
+		handler.CancelNovelWorkflowNode(c.Writer, c.Request, c.Param("id"), c.Param("nodeId"))
+	})
+	v1.POST("/novel/workflows/:id/nodes/:nodeId/retry", func(c *gin.Context) {
+		handler.RetryNovelWorkflowNode(c.Writer, c.Request, c.Param("id"), c.Param("nodeId"))
+	})
+	// novel-workflow v2：shot-dubbing-node
+	v1.POST("/novel/dubbing/dispatch", gin.WrapF(handler.DispatchShotDubbing))
+	v1.POST("/novel/dubbing/dispatch-project", gin.WrapF(handler.DispatchProjectDubbing))
+	v1.GET("/novel/dubbing", gin.WrapF(handler.ListShotDubbings))
+	// novel-workflow v2：shot-subtitle-node
+	v1.POST("/novel/subtitle/dispatch", gin.WrapF(handler.DispatchShotSubtitle))
+	v1.POST("/novel/subtitle/dispatch-project", gin.WrapF(handler.DispatchProjectSubtitle))
+	v1.PUT("/novel/subtitle/:projectId/:shotId/lines", func(c *gin.Context) {
+		handler.UpdateSubtitleLines(c.Writer, c.Request, c.Param("projectId"), c.Param("shotId"))
+	})
+	v1.GET("/novel/subtitle", gin.WrapF(handler.GetShotSubtitle))   // 旧路径, 单条（?projectId=&shotId=）
+	v1.GET("/novel/subtitles", gin.WrapF(handler.ListShotSubtitles)) // 列表（?projectId=）
+	// novel-workflow v2：bgm-layer
+	// /bgm/presets 公开:挂在 /api 根组,允许匿名访问(handler 内部不读 user ctx)。
+	// /bgm/custom 用户态:挂在 v1 组,需要登录才能查看/上传/删除自己上传的 BGM。
+	v1.GET("/bgm/custom", gin.WrapF(handler.ListBgmCustoms))
+	v1.POST("/bgm/custom/upload", gin.WrapF(handler.UploadBgmCustom))
+	v1.DELETE("/bgm/custom/:id", func(c *gin.Context) {
+		handler.DeleteBgmCustom(c.Writer, c.Request, c.Param("id"))
+	})
+	// novel-workflow v2：composition-layer
+	v1.POST("/novel/composition", gin.WrapF(handler.CreateCompositionTask))
+	v1.GET("/novel/composition", gin.WrapF(handler.ListCompositionTasks))
+	v1.GET("/novel/composition/:id", func(c *gin.Context) {
+		handler.GetCompositionTask(c.Writer, c.Request, c.Param("id"))
+	})
+	v1.POST("/novel/composition/:id/start", func(c *gin.Context) {
+		handler.StartCompositionTask(c.Writer, c.Request, c.Param("id"))
+	})
+	v1.POST("/novel/composition/:id/stop", func(c *gin.Context) {
+		handler.StopCompositionTask(c.Writer, c.Request, c.Param("id"))
+	})
+	v1.POST("/novel/composition/:id/retry", func(c *gin.Context) {
+		handler.RetryCompositionTask(c.Writer, c.Request, c.Param("id"))
+	})
+	// novel-workflow v2：export-layer
+	v1.GET("/novel/export/metadata", gin.WrapF(handler.GetExportMetadata))
+	v1.POST("/novel/export/caption", gin.WrapF(handler.GeneratePlatformCaption))
+	v1.GET("/novel/export/history", gin.WrapF(handler.ListExportHistory))
+	v1.GET("/novel/export/download", gin.WrapF(handler.DownloadComposition))
+	// novel-workflow v2：novel-rerun-layer (★ 核心 UX)
+	v1.POST("/novel/rerun/shot", gin.WrapF(handler.RerunShotLayer))
+	v1.POST("/novel/rerun/full", gin.WrapF(handler.RerunFullLayer))
+	v1.POST("/novel/rerun/rollback", gin.WrapF(handler.RollbackVersion))
+	v1.GET("/novel/rerun/versions", gin.WrapF(handler.ListVersions))
+	v1.GET("/novel/rerun/latest", gin.WrapF(handler.GetLatestVersion))
+	// novel-workflow v2：series-asset-lock (漫剧级资产锁定)
+	v1.GET("/novel/series-asset-lock", gin.WrapF(handler.GetSeriesAssetLock))
+	v1.PUT("/novel/series-asset-lock", gin.WrapF(handler.UpdateSeriesAssetLock))
+	v1.POST("/novel/series-asset-lock/lock", gin.WrapF(handler.LockSeriesAssetLock))
+	v1.POST("/novel/series-asset-lock/unlock", gin.WrapF(handler.UnlockSeriesAssetLock))
+	// 小说创作工作台（v1）
+	v1.GET("/novel-write/sessions", gin.WrapF(handler.ListNovelWriteSessions))
+	v1.POST("/novel-write/sessions", gin.WrapF(handler.CreateNovelWriteSession))
+	v1.PATCH("/novel-write/sessions/:id", func(c *gin.Context) {
+		handler.UpdateNovelWriteSession(c.Writer, c.Request, c.Param("id"))
+	})
+	v1.DELETE("/novel-write/sessions/:id", func(c *gin.Context) {
+		handler.DeleteNovelWriteSession(c.Writer, c.Request, c.Param("id"))
+	})
+	v1.GET("/novel-write/sessions/:id/messages", func(c *gin.Context) {
+		handler.ListNovelWriteMessages(c.Writer, c.Request, c.Param("id"))
+	})
+	v1.POST("/novel-write/sessions/:id/messages", func(c *gin.Context) {
+		handler.SendNovelWriteMessage(c.Writer, c.Request, c.Param("id"))
+	})
+	v1.POST("/novel-write/sessions/:id/messages/continue", func(c *gin.Context) {
+		handler.ContinueNovelWriteMessage(c.Writer, c.Request, c.Param("id"))
+	})
+	v1.GET("/novel-write/sessions/:id/prompt", func(c *gin.Context) {
+		handler.GetNovelWritePrompt(c.Writer, c.Request, c.Param("id"))
+	})
+	v1.PUT("/novel-write/sessions/:id/prompt", func(c *gin.Context) {
+		handler.PutNovelWritePrompt(c.Writer, c.Request, c.Param("id"))
+	})
+	v1.POST("/novel-write/sessions/:id/export", func(c *gin.Context) {
+		handler.ExportNovelWriteStoryboard(c.Writer, c.Request, c.Param("id"))
+	})
+	v1.GET("/novel-write/exports", gin.WrapF(handler.ListNovelWriteExports))
 	v1.DELETE("/user-tokens/:id", func(c *gin.Context) {
 		handler.DeleteUserTokenHandler(c.Writer, c.Request)
 	})
